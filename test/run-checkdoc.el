@@ -12,10 +12,14 @@
 (let ((checkdoc-diagnostic-buffer "*neotest-checkdoc*"))
   (dolist (file command-line-args-left)
     (checkdoc-file file))
-  (with-current-buffer (get-buffer-create checkdoc-diagnostic-buffer)
-    (goto-char (point-min))
-    (if (re-search-forward "^[^*\n].*:[0-9]+: " nil t)
-        (progn (princ (buffer-string)) (kill-emacs 1))
+  (let ((text (mapconcat (lambda (name)
+                           (if-let* ((buffer (get-buffer name)))
+                               (with-current-buffer buffer (buffer-string))
+                             ""))
+                         (list checkdoc-diagnostic-buffer "*Warnings*")
+                         "\n")))
+    (if (string-match-p "^[^*\n].*:[0-9]+: " text)
+        (progn (princ text) (kill-emacs 1))
       (princ "checkdoc: clean\n"))))
 
 ;;; run-checkdoc.el ends here

@@ -207,7 +207,10 @@ Falls back to the `project-current' root."
             failure)))
 
 (defun neotest-node--parse-line (run line)
-  "Parse one JSON event LINE from RUN's reporter into a result or nil."
+  "Parse one JSON event LINE from RUN's reporter into a result or nil.
+Lines that are not events, such as syntax errors, go to the output."
+  (unless (string-prefix-p "{" line)
+    (neotest-append-output run (concat line "\n")))
   (when (string-prefix-p "{" line)
     (let* ((event (ignore-errors
                     (json-parse-string line :object-type 'alist

@@ -1,7 +1,8 @@
 # neotest.el design
 
 Emacs 30+ test runner with pluggable per-language backends. Core uses
-built-ins only. One backend ships: Node's `node --test`.
+built-ins only. Four backends ship: `node --test`, vitest, `cargo test`
+and pytest.
 
 ## Backend contract
 
@@ -18,10 +19,20 @@ A backend is a plist registered with `neotest-register-backend`.
 | `:parse-line` | `(run line) -> result(s)` | one line of the result stream to result plists |
 
 `:command` returns `(:command ARGV :directory DIR :env ("K=V") :parse-stream stdout|stderr)`.
-`:parse-line` may keep state in `(plist-get run :state)`.
+`:parse-line` may keep state in `(plist-get run :state)` and may call
+`neotest-append-output` to surface human-readable text embedded in
+structured events. Core always splits stdout and stderr; the parse
+stream feeds `:parse-line`, the other goes to the output buffer.
 
-The node backend is 236 lines. It adds `:root` (nearest `package.json`)
-and `:parse-stream stderr`.
+| backend | lines | runner output | shipped helper | discovery |
+|---|---|---|---|---|
+| node | 239 | JSON events on stderr | `neotest-node-reporter.mjs` (19 lines) | treesit query, JS/TS |
+| vitest | 165 | JSON lines on stderr | `neotest-vitest-reporter.mjs` (22 lines) | reuses the node query |
+| rust | 194 | libtest JSON on stdout (`RUSTC_BOOTSTRAP=1`) | none | treesit query, `#[test]` siblings |
+| pytest | 146 | JSON lines on stderr | `neotest_pytest.py` (42 lines) | treesit query, `test_*`/`Test*` |
+
+Results may carry `:runner-name`, the runner's own name for the test,
+which the backend uses to rerun exactly that test.
 
 ## Data model
 
@@ -117,6 +128,21 @@ explicitly. Both reporters run in one process:
     node --test --test-reporter=spec --test-reporter-destination=stdout \
                 --test-reporter=neotest-node-reporter.mjs --test-reporter-destination=stderr \
                 [--test-name-pattern=...] files...
+
+## What the second, third and fourth backends changed in core
+
+- Always create the stderr pipe, so a backend parsing stdout (cargo)
+  still gets its stderr into the output buffer.
+- `neotest-append-output` became public: libtest embeds the failure
+  text in the JSON event, and vitest and node print errors as plain
+  lines on the parse stream.
+- Any normal exit counts as `finished`; cargo exits 101 on failure.
+- `neotest--parse-line` catches backend errors and drops the line.
+- A failed spawn finishes the run with `error` instead of leaving it
+  `running`.
+- `neotest-results-for-file` tolerates results without a file.
+
+None of these touched the backend contract or the consumers.
 
 ## Not building
 
