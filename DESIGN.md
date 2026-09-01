@@ -1,8 +1,8 @@
 # neotest.el design
 
 Emacs 30+ test runner with pluggable per-language backends. Core uses
-built-ins only. Four backends ship: `node --test`, vitest, `cargo test`
-and pytest.
+built-ins only and requires an Emacs built with tree-sitter. Four
+backends ship: `node --test`, vitest, `cargo test` and pytest.
 
 ## Backend contract
 
@@ -13,8 +13,7 @@ A backend is a plist registered with `neotest-register-backend`.
 | `:predicate` | mode symbol, regexp, or thunk | does this backend own the current buffer |
 | `:test-file-p` | `(file) -> bool` | which project files are test files |
 | `:root` | `(file) -> dir` | project root; default `project-current` |
-| `:query` | `(LANG . QUERY)` or thunk | tree-sitter discovery query |
-| `:positions` | `(buffer) -> positions` | discovery without tree-sitter |
+| `:query` | `(LANG . QUERY)` or `(file) -> (LANG . QUERY)` | tree-sitter discovery query |
 | `:command` | `(run) -> spec` | argv, directory, env, which stream carries results |
 | `:parse-line` | `(run line) -> result(s)` | one line of the result stream to result plists |
 
@@ -28,7 +27,7 @@ stream feeds `:parse-line`, the other goes to the output buffer.
 |---|---|---|---|---|
 | node | 239 | JSON events on stderr | `neotest-node-reporter.mjs` (19 lines) | treesit query, JS/TS |
 | vitest | 165 | JSON lines on stderr | `neotest-vitest-reporter.mjs` (22 lines) | reuses the node query |
-| rust | 194 | libtest JSON on stdout (`RUSTC_BOOTSTRAP=1`) | none | treesit query, `#[test]` siblings |
+| rust | 176 | libtest JSON on stdout (`RUSTC_BOOTSTRAP=1`) | none | treesit query, `#[test]` siblings |
 | pytest | 146 | JSON lines on stderr | `neotest_pytest.py` (42 lines) | treesit query, `test_*`/`Test*` |
 
 Results may carry `:runner-name`, the runner's own name for the test,
@@ -94,7 +93,7 @@ Consumers subscribe to three hooks and read the shared cache
 |---|---|---|
 | run process, stream two outputs | `make-process` with `:stderr` pipe process | neotest.el |
 | raw output with file:line jumps | `compilation-minor-mode`, one extra `compilation-error-regexp-alist` entry for `file://` URLs | neotest.el |
-| test discovery | `treesit-query-capture` with `GROUPED` | neotest-treesit.el |
+| test discovery | `treesit-query-capture` with `GROUPED`, `treesit-ensure-installed` | neotest.el |
 | inline failures | `flymake-diagnostic-functions`, `flymake-make-diagnostic` | neotest-flymake.el |
 | failures in unvisited files | `flymake-list-only-diagnostics` (read by `flymake-show-project-diagnostics`) | neotest-flymake.el |
 | gutter status | `define-fringe-bitmap` + overlay `before-string` | neotest-status.el |
@@ -130,6 +129,11 @@ explicitly. Both reporters run in one process:
                 [--test-name-pattern=...] files...
 
 ## What the second, third and fourth backends changed in core
+
+- Tree-sitter became a hard requirement and discovery moved from
+  `neotest-treesit.el` into core, with a per-run position index. The
+  rust backend's private index and the `:positions` escape hatch went
+  away with it.
 
 - Always create the stderr pipe, so a backend parsing stdout (cargo)
   still gets its stderr into the output buffer.

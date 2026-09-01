@@ -10,14 +10,13 @@
 ;; same switch.
 ;;
 ;; libtest names tests by module path (`scanner::tests::adds') and never
-;; mentions files or lines.  The backend discovers positions in the
-;; files of the run first and resolves each event against them, so
-;; results carry the file and line the consumers need.
+;; mentions files or lines.  The backend maps each name to a position
+;; from core's index of the run's files, which gives the id; core then
+;; fills line and column from the same position.
 
 ;;; Code:
 
 (require 'neotest)
-(require 'neotest-treesit)
 (require 'json)
 
 (defgroup neotest-rust nil
@@ -82,27 +81,12 @@ Crate roots and integration test files map to the empty string."
         (names (string-join (neotest-rust--position-names position) "::")))
     (if (string-empty-p prefix) names (concat prefix "::" names))))
 
-(defun neotest-rust--file-positions (file)
-  "Return the positions discovered in FILE without disturbing its buffer."
-  (if-let* ((buffer (find-buffer-visiting file)))
-      (with-current-buffer buffer
-        (neotest-treesit-positions buffer 'rust neotest-rust--query))
-    (with-temp-buffer
-      (insert-file-contents file)
-      (setq buffer-file-name file)
-      (neotest-treesit-positions (current-buffer) 'rust neotest-rust--query))))
-
 (defun neotest-rust--index (run)
   "Return a hash table from libtest name to position for RUN's files."
-  (let* ((root (plist-get run :root))
-         (files (pcase (plist-get run :scope)
-                  ('project (plist-get run :files))
-                  ('results (delete-dups (mapcar (lambda (r) (plist-get r :file))
-                                                 (plist-get run :results))))
-                  (_ (list (plist-get run :file)))))
-         (table (make-hash-table :test 'equal)))
-    (dolist (file files)
-      (dolist (pos (neotest-rust--file-positions file))
+  (let ((root (plist-get run :root))
+        (table (make-hash-table :test 'equal)))
+    (dolist (pos (neotest-run-positions run))
+      (when (eq (plist-get pos :type) 'test)
         (puthash (neotest-rust--full-name pos root) pos table)))
     table))
 
@@ -162,8 +146,6 @@ Paths in STDOUT are relative to RUN's directory."
                   :runner-name name
                   :status status
                   :file file
-                  :line (plist-get position :line)
-                  :column (plist-get position :column)
                   :duration (when-let* ((s (alist-get 'exec_time event))) (* 1000 s)))
             (when (eq status 'failed)
               (list :message (or (and stdout (string-trim stdout)) "test failed")

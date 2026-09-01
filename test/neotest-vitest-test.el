@@ -11,7 +11,6 @@
 (require 'test-helper)
 (require 'neotest)
 (require 'neotest-vitest)
-(require 'neotest-treesit)
 
 (defconst neotest-vitest-test--root (neotest-test-fixture "vitest/"))
 (defconst neotest-vitest-test--file (neotest-test-fixture "vitest/src/demo.test.ts"))
@@ -47,8 +46,7 @@
     (insert-file-contents neotest-vitest-test--file)
     (setq buffer-file-name neotest-vitest-test--file)
     (typescript-ts-mode)
-    (let* ((query (neotest-node--query))
-           (positions (neotest-treesit-positions (current-buffer) (car query) (cdr query)))
+    (let* ((positions (neotest-file-positions neotest-vitest-test--file 'vitest))
            (tests (mapcar (lambda (p) (plist-get p :id))
                           (seq-filter (lambda (p) (eq (plist-get p :type) 'test)) positions)))
            (reported (mapcar (lambda (r) (plist-get r :id)) (neotest-vitest-test--results))))
