@@ -49,9 +49,8 @@
                                         (neotest--record run r)
                                         r))
                                     (neotest-test-fixture-lines "rs-events.jsonl")))))
-    (should (equal (mapcar (lambda (r) (plist-get r :runner-name)) results)
-                   '("scanner::tests::counts_words" "tests::adds" "tests::ignored_one"
-                     "tests::panics" "tests::fails_on_purpose")))
+    (should (equal (mapcar (lambda (r) (plist-get r :name)) results)
+                   '("counts_words" "adds" "ignored_one" "panics" "fails_on_purpose")))
     (should (equal (mapcar (lambda (r) (plist-get r :status)) results)
                    '(passed passed skipped passed failed)))
     (let ((words (car results))
@@ -70,11 +69,16 @@
          (argv (lambda (props) (plist-get (neotest-rust--command (append base props)) :command))))
     (should (member "scanner" (funcall argv '(:scope file))))
     (should-not (member "src" (funcall argv (list :scope 'file :file neotest-rust-test--lib))))
-    (let ((cmd (funcall argv (list :scope 'test
-                                   :position (list :id (neotest-make-id neotest-rust-test--scanner "tests" "counts_words")
-                                                   :file neotest-rust-test--scanner :type 'test)))))
+    (let ((cmd (funcall argv (list :scope 'targets
+                                   :targets (list (list :id (neotest-make-id neotest-rust-test--scanner "tests" "counts_words")
+                                                        :file neotest-rust-test--scanner :type 'test))))))
       (should (equal (seq-drop-while (lambda (a) (not (equal a "--"))) cmd)
                      '("--" "--exact" "scanner::tests::counts_words" "-Z" "unstable-options" "--format=json" "--report-time"))))
+    (let ((cmd (funcall argv (list :scope 'targets
+                                   :targets (list (list :id (neotest-make-id neotest-rust-test--scanner "tests")
+                                                        :file neotest-rust-test--scanner :type 'namespace))))))
+      (should (equal (seq-take (seq-drop-while (lambda (a) (not (equal a "--"))) cmd) 2)
+                     '("--" "scanner::tests"))))
     (should (member "RUSTC_BOOTSTRAP=1" (plist-get (neotest-rust--command (append base '(:scope file))) :env)))))
 
 (ert-deftest neotest-rust-integration-runs-fixture-crate ()

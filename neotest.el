@@ -19,7 +19,7 @@
 ;; requires an Emacs built with tree-sitter.
 ;;
 ;; A backend is registered with `neotest-register-backend' and supplies:
-;;   :predicate   how to recognise a buffer it owns
+;;   :predicate   a function saying whether it owns the current buffer
 ;;   :test-file-p how to recognise a test file path
 ;;   :query       a tree-sitter query that finds tests and groups
 ;;   :command     how to turn a run spec into a process command
@@ -94,10 +94,8 @@ The run's :status is `finished', `killed' or `error' by then, and
   "Register backend NAME with PROPS.
 PROPS is a plist with these keys:
 
-:predicate    A major-mode symbol matched with `derived-mode-p', a
-              regexp matched against the buffer file name, or a
-              function of no arguments returning non-nil in buffers the
-              backend owns.
+:predicate    Function of no arguments returning non-nil when the
+              backend owns the current buffer.
 :test-file-p  Function of a file name returning non-nil for test files.
 :query        Cons (LANGUAGE . QUERY), or a function of a file name
               returning one.  QUERY is a tree-sitter query whose captures
@@ -118,21 +116,11 @@ PROPS is a plist with these keys:
   (or (alist-get name neotest--backends)
       (error "Neotest: no backend named `%s'" name)))
 
-(defun neotest--predicate-matches-p (predicate)
-  "Return non-nil when PREDICATE matches the current buffer."
-  (cond
-   ((functionp predicate) (funcall predicate))
-   ((symbolp predicate) (derived-mode-p predicate))
-   ((stringp predicate) (and buffer-file-name
-                             (string-match-p predicate buffer-file-name)))
-   (t (error "Neotest: invalid predicate `%S'" predicate))))
-
 (defun neotest-backend-for-buffer (&optional buffer)
   "Return the name of the backend owning BUFFER, or nil."
   (with-current-buffer (or buffer (current-buffer))
     (car (seq-find (lambda (entry)
-                     (neotest--predicate-matches-p
-                      (plist-get (cdr entry) :predicate)))
+                     (funcall (plist-get (cdr entry) :predicate)))
                    neotest--backends))))
 
 (defun neotest-backend-for-file (file)
@@ -298,11 +286,13 @@ parsed in a temporary buffer.  Returns nil when FILE cannot be read."
         cached))))
 
 (defun neotest-run-files (run)
-  "Return the files RUN covers."
+  "Return the files RUN covers.
+A `project' run lists its :files, a `targets' run the files of its
+:targets, and a `file' run its :file."
   (pcase (plist-get run :scope)
     ('project (plist-get run :files))
-    ('results (delete-dups (mapcar (lambda (r) (plist-get r :file))
-                                   (plist-get run :results))))
+    ('targets (delete-dups (mapcar (lambda (target) (plist-get target :file))
+                                   (plist-get run :targets))))
     (_ (list (plist-get run :file)))))
 
 (defun neotest-run-positions (run)
@@ -581,9 +571,9 @@ Stderr gets its own pipe process so the two streams never interleave."
 
 (defun neotest-run (scope &rest props)
   "Run tests for SCOPE in the current buffer's backend.
-SCOPE is `test', `namespace', `file', `project' or `results'.  PROPS
-are merged into the run plist; `test' and `namespace' expect
-:position, `results' expects :results."
+SCOPE is `file', `project' or `targets'.  PROPS are merged into the
+run plist; `targets' expects :targets, a list of position plists each
+carrying :id, :type and :file.  Results qualify as targets too."
   (neotest-kill)
   (let ((run (apply #'neotest--make-run scope props)))
     (when (eq scope 'project)
@@ -611,7 +601,7 @@ the copy behaves like a first run."
   (interactive)
   (let ((pos (or (neotest-position-at-point)
                  (user-error "Neotest: no test at point"))))
-    (neotest-run (plist-get pos :type) :position pos)))
+    (neotest-run 'targets :targets (list pos))))
 
 ;;;###autoload
 (defun neotest-run-file ()
@@ -641,7 +631,7 @@ the copy behaves like a first run."
          (failed (seq-filter (lambda (r) (eq (plist-get r :type) 'test))
                              (neotest-run-failed-results last))))
     (unless failed (user-error "Neotest: no failed tests in last run"))
-    (neotest--restart last :scope 'results :results failed)))
+    (neotest--restart last :scope 'targets :targets failed)))
 
 ;;;###autoload
 (defun neotest-kill ()

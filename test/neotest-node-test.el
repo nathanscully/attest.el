@@ -12,8 +12,7 @@
 (require 'neotest)
 (require 'neotest-node)
 
-(defconst neotest-node-test--file
-  "/private/tmp/claude-501/-Users-nathanscully-projects-emacs-neotest/d70bf539-2ac7-420f-8fb6-13c0b2c819ad/scratchpad/probe/demo/src/demo.test.ts"
+(defconst neotest-node-test--file (neotest-test-fixture "demo.test.ts")
   "File path recorded inside demo-events.jsonl.")
 
 (defun neotest-node-test--parse-fixture (name)
@@ -78,11 +77,11 @@
     (should-not (neotest-node--parse-line run "{broken"))))
 
 (ert-deftest neotest-node-name-pattern-anchors-tests-and-namespaces ()
-  (should (equal (neotest-node--name-pattern "/f.ts::math::adds" 'test)
+  (should (equal (neotest-node--name-pattern (list :id "/f.ts::math::adds" :type 'test))
                  "--test-name-pattern=^math adds$"))
-  (should (equal (neotest-node--name-pattern "/f.ts::math::nested" 'namespace)
+  (should (equal (neotest-node--name-pattern (list :id "/f.ts::math::nested" :type 'namespace))
                  "--test-name-pattern=^math nested( |$)"))
-  (should (equal (neotest-node--name-pattern "/f.ts::a (b) [c]? $1.0" 'test)
+  (should (equal (neotest-node--name-pattern (list :id "/f.ts::a (b) [c]? $1.0" :type 'test))
                  "--test-name-pattern=^a \\(b\\) \\[c\\]\\? \\$1\\.0$")))
 
 (ert-deftest neotest-node-command-for-scopes ()
@@ -92,17 +91,18 @@
     (should (equal (last (funcall argv (append base '(:scope file))))
                    '("src/a.test.ts")))
     (should (member "--test-name-pattern=^math adds$"
-                    (funcall argv (append base (list :scope 'test
-                                                     :position (list :id "/repo/src/a.test.ts::math::adds"
-                                                                     :type 'test))))))
+                    (funcall argv (append base (list :scope 'targets
+                                                     :targets (list (list :id "/repo/src/a.test.ts::math::adds"
+                                                                          :file "/repo/src/a.test.ts"
+                                                                          :type 'test)))))))
     (should (equal (last (funcall argv (append base (list :scope 'project
                                                           :files '("/repo/src/a.test.ts"
                                                                    "/repo/src/b.test.ts"))))
                          2)
                    '("src/a.test.ts" "src/b.test.ts")))
-    (let ((cmd (funcall argv (append base (list :scope 'results
-                                                :results (list (list :id "/repo/src/a.test.ts::x" :file "/repo/src/a.test.ts")
-                                                               (list :id "/repo/src/b.test.ts::y" :file "/repo/src/b.test.ts")))))))
+    (let ((cmd (funcall argv (append base (list :scope 'targets
+                                                :targets (list (list :id "/repo/src/a.test.ts::x" :file "/repo/src/a.test.ts" :type 'test)
+                                                               (list :id "/repo/src/b.test.ts::y" :file "/repo/src/b.test.ts" :type 'test)))))))
       (should (member "--test-name-pattern=^x$" cmd))
       (should (member "--test-name-pattern=^y$" cmd))
       (should (equal (last cmd 2) '("src/a.test.ts" "src/b.test.ts"))))

@@ -54,31 +54,33 @@
 
 (ert-deftest neotest-vitest-scoped-runs-drop-filtered-tests ()
   (let* ((target (neotest-make-id neotest-vitest-test--file "math" "adds"))
-         (run (list :backend 'vitest :scope 'test :root neotest-vitest-test--root
-                    :position (list :id target :type 'test)))
+         (run (list :backend 'vitest :scope 'targets :root neotest-vitest-test--root
+                    :targets (list (list :id target :type 'test))))
          (results (delq nil (mapcar (lambda (l) (neotest-vitest--parse-line run l))
                                     (neotest-test-fixture-lines "vitest-events.jsonl")))))
     (should (equal (mapcar (lambda (r) (plist-get r :id)) results) (list target))))
   (let* ((ns (neotest-make-id neotest-vitest-test--file "math" "nested"))
-         (run (list :backend 'vitest :scope 'namespace :root neotest-vitest-test--root
-                    :position (list :id ns :type 'namespace)))
+         (run (list :backend 'vitest :scope 'targets :root neotest-vitest-test--root
+                    :targets (list (list :id ns :type 'namespace))))
          (results (delq nil (mapcar (lambda (l) (neotest-vitest--parse-line run l))
                                     (neotest-test-fixture-lines "vitest-events.jsonl")))))
     (should (equal (mapcar (lambda (r) (plist-get r :name)) results)
                    '("deep passes" "skipped one" "todo one")))))
 
 (ert-deftest neotest-vitest-name-patterns ()
-  (should (equal (neotest-vitest--name-pattern (list :id "/f::math::adds" :type 'test)) "^math adds$"))
-  (should (equal (neotest-vitest--name-pattern (list :id "/f::math::nested" :type 'namespace)) "^math nested( |$)"))
-  (should (equal (neotest-vitest--name-pattern (list (list :id "/f::math::adds") (list :id "/f::throws")))
-                 "^(math adds|throws)$")))
+  (should (equal (neotest-vitest--name-pattern (list (list :id "/f::math::adds" :type 'test))) "^math adds$"))
+  (should (equal (neotest-vitest--name-pattern (list (list :id "/f::math::nested" :type 'namespace))) "^math nested( |$)"))
+  (should (equal (neotest-vitest--name-pattern (list (list :id "/f::math::adds" :type 'test)
+                                                     (list :id "/f::throws" :type 'test)))
+                 "^(?:math adds$|throws$)")))
 
 (ert-deftest neotest-vitest-command-uses-local-binary ()
   (skip-unless (file-executable-p (expand-file-name "node_modules/.bin/vitest" neotest-vitest-test--root)))
   (let* ((spec (neotest-vitest--command
-                (list :backend 'vitest :scope 'test :root neotest-vitest-test--root
+                (list :backend 'vitest :scope 'targets :root neotest-vitest-test--root
                       :file neotest-vitest-test--file
-                      :position (list :id (neotest-make-id neotest-vitest-test--file "math" "adds") :type 'test))))
+                      :targets (list (list :id (neotest-make-id neotest-vitest-test--file "math" "adds")
+                                           :file neotest-vitest-test--file :type 'test)))))
          (cmd (plist-get spec :command)))
     (should (string-suffix-p "node_modules/.bin/vitest" (car cmd)))
     (should (equal (last cmd 3) '("-t" "^math adds$" "src/demo.test.ts")))

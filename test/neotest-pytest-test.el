@@ -71,8 +71,9 @@
   (let* ((base (list :backend 'pytest :root neotest-pytest-test--root :file neotest-pytest-test--file))
          (argv (lambda (props) (plist-get (neotest-pytest--command (append base props)) :command))))
     (should (equal (last (funcall argv '(:scope file))) '("test_demo.py")))
-    (should (equal (last (funcall argv (list :scope 'test
-                                             :position (list :id (neotest-make-id neotest-pytest-test--file "TestScanner" "test_raises")))))
+    (should (equal (last (funcall argv (list :scope 'targets
+                                             :targets (list (list :id (neotest-make-id neotest-pytest-test--file "TestScanner" "test_raises")
+                                                                  :file neotest-pytest-test--file :type 'test)))))
                    '("test_demo.py::TestScanner::test_raises")))
     (should (member "neotest_pytest" (funcall argv '(:scope file))))
     (should (seq-find (lambda (e) (string-prefix-p "PYTHONPATH=" e))

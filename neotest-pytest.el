@@ -79,14 +79,11 @@
 (defun neotest-pytest--command (run)
   "Return the process spec for RUN."
   (let* ((root (plist-get run :root))
-         (scope (plist-get run :scope))
-         (position (plist-get run :position))
          (selection
-          (pcase scope
-            ((or 'test 'namespace) (list (neotest-pytest--nodeid (plist-get position :id) root)))
-            ('file (list (file-relative-name (plist-get run :file) root)))
-            ('project (mapcar (lambda (f) (file-relative-name f root)) (plist-get run :files)))
-            ('results (mapcar (lambda (r) (plist-get r :runner-name)) (plist-get run :results))))))
+          (pcase (plist-get run :scope)
+            ('targets (mapcar (lambda (target) (neotest-pytest--nodeid (plist-get target :id) root))
+                              (plist-get run :targets)))
+            (_ (mapcar (lambda (f) (file-relative-name f root)) (neotest-run-files run))))))
     (list :command (append neotest-pytest-command
                            (list "-p" "neotest_pytest")
                            neotest-pytest-extra-args
@@ -119,7 +116,6 @@
     (append (list :id (apply #'neotest-make-id file id-names)
                   :type 'test
                   :name (car (last names))
-                  :runner-name (alist-get 'nodeid event)
                   :status status
                   :file file
                   :line (1+ (or (nth 1 location) 0))
