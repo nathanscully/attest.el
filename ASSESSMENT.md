@@ -22,6 +22,41 @@ through flymake and lists them in `tabulated-list-mode`. It loads with
 - Discovery timing: 1000 synthetic files, 29 000 positions, 11.72 s
   wall, 11.7 ms per file, 0.18 s in GC (`emacs -Q --batch`, M-series Mac).
 
+## Phase 3: the abstraction under three more backends
+
+vitest, `cargo test` and pytest were added after the contract was fixed.
+Each is one file plus, for the JS and Python runners, a small reporter
+or plugin. The contract did not change; core changed in six small ways
+listed in DESIGN.md, all robustness, none visible to backends or
+consumers. 40 ert tests pass, including one live run per runner.
+
+What each backend taught:
+
+- **vitest** reuses the node discovery query unchanged. `-t` matches
+  the space-joined ancestry like node. vitest reports tests excluded by
+  `-t` as `skipped`, so the backend filters results to the run's scope
+  or a targeted run would grey out every other test. Backend
+  ordering matters: vitest registers after node and only claims buffers
+  whose package has `node_modules/.bin/vitest`.
+- **rust** is the hard case. libtest names tests by module path and
+  never mentions files or lines, so the backend discovers positions in
+  the run's files first and resolves events against them. This is the
+  position-index idea from phase 4 arriving early, kept inside the
+  backend. The JSON stream is behind `-Z unstable-options`, which
+  stable rustc accepts with `RUSTC_BOOTSTRAP=1`; the text format would
+  need a stateful parser instead. Project scope parses every file
+  under `src/` and `tests/` synchronously (11.7 ms each).
+- **pytest** node ids already have the id shape. The plugin emits
+  `rootdir` so paths resolve on any machine. Decorated tests report the
+  decorator line, discovery reports the `def` line; the fringe marker
+  lands on the decorator. Skips surface in the `setup` phase.
+
+Live in the daemon: vitest `neotest-run-at-point` on
+`poly/packages/core/src/dispatch.test.ts` ran one test in
+`packages/core` with `-t "^dispatch loop runs handlers …$"`; cargo on the
+fixture crate placed the flymake error at `src/lib.rs:19:9`; pytest on
+the fixture placed it at the `raise` line.
+
 ## Where it breaks down
 
 1. **Flymake is pull, not push.** A backend cannot report at will; a
@@ -80,7 +115,7 @@ None of these forced a third-party dependency.
 | discovery | treesit query, shared across languages | per-backend (dart uses treesit) | regexp + sexp motion |
 | results UI | flymake inline, fringe, tabulated-list, compile-style output | treemacs tree | compile buffer, transient menu |
 | runner scopes | test, namespace, file, project, rerun-failed | test, group, file, module, project, rerun-failed | function, module, project |
-| node:test | yes | via the handoff's 90-line reference backend | no (jest only) |
+| runners | node:test, vitest, cargo, pytest | dart, buttercup | cargo, cask, mix, jest, python |
 | test-at-point without a UI | yes | no (tree is the UI) | yes |
 
 What is different: results flow into flymake, the fringe and
@@ -102,8 +137,6 @@ right move would have been a node backend for verdict.
 
 ## Next
 
-- Phase 3: a pytest backend. If it needs a change to core, the contract
-  was wrong.
 - Chunked discovery over `project-files` behind an idle timer, with the
   timing above as the budget.
 - `test.each` and template-string names: mark positions dynamic and

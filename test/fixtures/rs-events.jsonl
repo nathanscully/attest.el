@@ -1,0 +1,12 @@
+{ "type": "suite", "event": "started", "test_count": 5 }
+{ "type": "test", "event": "started", "name": "scanner::tests::counts_words" }
+{ "type": "test", "event": "started", "name": "tests::adds" }
+{ "type": "test", "event": "started", "name": "tests::fails_on_purpose" }
+{ "type": "test", "event": "started", "name": "tests::ignored_one" }
+{ "type": "test", "event": "started", "name": "tests::panics" }
+{ "type": "test", "name": "scanner::tests::counts_words", "event": "ok", "exec_time": 0.000000958 }
+{ "type": "test", "name": "tests::adds", "event": "ok", "exec_time": 0.000000208 }
+{ "type": "test", "name": "tests::ignored_one", "event": "ignored" }
+{ "type": "test", "name": "tests::panics", "event": "ok", "exec_time": 0.000082625 }
+{ "type": "test", "name": "tests::fails_on_purpose", "event": "failed", "exec_time": 0.000101334, "stdout": "\nthread 'tests::fails_on_purpose' (5811257) panicked at src/lib.rs:19:9:\nassertion `left == right` failed: x should be three\n  left: 2\n right: 3\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n" }
+{ "type": "suite", "event": "failed", "passed": 3, "failed": 1, "ignored": 1, "measured": 0, "filtered_out": 0, "exec_time": 0.000412875 }

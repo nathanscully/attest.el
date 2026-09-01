@@ -205,8 +205,9 @@ Tests win over namespaces of equal extent.  POSITIONS defaults to
   (let ((file (expand-file-name file))
         acc)
     (maphash (lambda (_id result)
-               (when (string= (expand-file-name (plist-get result :file)) file)
-                 (push result acc)))
+               (when-let* ((result-file (plist-get result :file)))
+                 (when (string= (expand-file-name result-file) file)
+                   (push result acc))))
              neotest--results)
     (nreverse acc)))
 
@@ -280,8 +281,10 @@ Tests win over namespaces of equal extent.  POSITIONS defaults to
                "(?\\(?:file://\\)?\\(/[^:()[:space:]]+\\):\\([0-9]+\\):\\([0-9]+\\))?"
                1 2 3))
 
-(defun neotest--append-output (run string)
-  "Append STRING from RUN's process to the output buffer."
+(defun neotest-append-output (run string)
+  "Append STRING to RUN's output buffer.
+Backends whose runner embeds human-readable output inside structured
+events call this to surface it."
   (when-let* ((buffer (plist-get run :output-buffer)))
     (when (buffer-live-p buffer)
       (with-current-buffer buffer
@@ -304,12 +307,17 @@ Complete lines go to the backend's :parse-line."
       (neotest--parse-line run parse line))))
 
 (defun neotest--parse-line (run parse line)
-  "Feed LINE to PARSE for RUN and record whatever it returns."
-  (let ((results (funcall parse run line)))
-    (when (and results (keywordp (car results)))
-      (setq results (list results)))
-    (dolist (result results)
-      (neotest--record run result))))
+  "Feed LINE to PARSE for RUN and record whatever it returns.
+A backend error is reported and the line dropped, so one bad line
+cannot stop the run."
+  (condition-case err
+      (let ((results (funcall parse run line)))
+        (when (and results (keywordp (car results)))
+          (setq results (list results)))
+        (dolist (result results)
+          (neotest--record run result)))
+    (error (message "Neotest: %s backend failed on %S: %s"
+                    (plist-get run :backend) line (error-message-string err)))))
 
 (defun neotest--flush-lines (run key)
   "Parse a trailing partial line buffered under KEY in RUN."
@@ -327,7 +335,7 @@ otherwise they only go to the output buffer."
   (lambda (_process string)
     (if parse-p
         (neotest--feed-lines run key string)
-      (neotest--append-output run string))))
+      (neotest-append-output run string))))
 
 (defun neotest--finish (run status)
   "Mark RUN finished with STATUS, notify consumers and report a summary."
@@ -357,11 +365,10 @@ otherwise they only go to the output buffer."
           (accept-process-output stderr 0.1)))
       (neotest--finish
        run
-       (cond ((string-prefix-p "finished" event) 'finished)
-             ((and (eq (process-status process) 'exit)
-                   (= (process-exit-status process) 1))
+       (cond ((eq (process-status process) 'signal) 'killed)
+             ((or (string-prefix-p "finished" event)
+                  (plist-get run :result-ids))
               'finished)
-             ((memq (process-status process) '(signal)) 'killed)
              (t 'error))))))
 
 (defun neotest--start (run)
@@ -388,13 +395,23 @@ otherwise they only go to the output buffer."
                   (string-prefix-p root (expand-file-name buffer-file-name)))))))
     (setq neotest--last-run run)
     (run-hook-with-args 'neotest-run-started-hook run)
+    (condition-case err
+        (neotest--spawn run command directory parse-stream)
+      (error
+       (neotest-append-output run (format "\n%s\n" (error-message-string err)))
+       (neotest--finish run 'error)
+       (signal (car err) (cdr err))))))
+
+(defun neotest--spawn (run command directory parse-stream)
+  "Start COMMAND in DIRECTORY for RUN, parsing PARSE-STREAM."
+  (progn
     (let* ((default-directory directory)
-           (stderr (when (eq parse-stream 'stderr)
-                     (make-pipe-process
-                      :name "neotest-stderr"
-                      :noquery t
-                      :filter (neotest--make-filter run :partial-stderr t)
-                      :sentinel #'ignore)))
+           (stderr (make-pipe-process
+                    :name "neotest-stderr"
+                    :noquery t
+                    :filter (neotest--make-filter run :partial-stderr
+                                                  (eq parse-stream 'stderr))
+                    :sentinel #'ignore))
            (process (make-process
                      :name "neotest"
                      :command command

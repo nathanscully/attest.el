@@ -1,5 +1,5 @@
 EMACS ?= emacs
-SRC := neotest.el neotest-treesit.el neotest-node.el neotest-flymake.el neotest-status.el neotest-list.el
+SRC := neotest.el neotest-treesit.el neotest-node.el neotest-vitest.el neotest-rust.el neotest-pytest.el neotest-flymake.el neotest-status.el neotest-list.el
 SRC := $(wildcard $(SRC))
 TESTS := $(wildcard test/*-test.el)
 LOAD := -L . -L test
