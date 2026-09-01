@@ -19,8 +19,8 @@ Read in this order before changing anything:
 | path | role |
 |---|---|
 | `neotest.el` | registry, ids, discovery + per-run position index, process runner, result cache, commands |
-| `neotest-node.el` + `neotest-node-reporter.mjs` | node:test backend; JSON events on stderr |
-| `neotest-vitest.el` + `neotest-vitest-reporter.mjs` | vitest backend; reuses the node query; registers after node |
+| `neotest-node.el` + `neotest-node-reporter.mjs` | node:test backend; reporter tracks nesting and emits `neotest:test` events on stderr |
+| `neotest-vitest.el` + `neotest-vitest-reporter.mjs` | vitest backend; same event shape, reuses the node query and parser; registers after node |
 | `neotest-rust.el` | cargo test via libtest JSON (`RUSTC_BOOTSTRAP=1`); maps names through the core index |
 | `neotest-pytest.el` + `neotest_pytest.py` | pytest backend; plugin loaded with `-p`, JSON on stderr |
 | `neotest-flymake.el`, `neotest-status.el`, `neotest-list.el` | consumers; subscribe to hooks, read `neotest--results` |
@@ -62,6 +62,9 @@ use `env -u NODE_OPTIONS node ...` when testing by hand.
   and `:type` from the discovered position in `neotest--record`.
 - Ids are `FILE::name::name`. Discovery and the runner must agree; every
   backend has a test asserting the id sets match.
+- Run scopes are `file`, `project` and `targets`. Run-at-point and
+  rerun-failed are both `targets` runs; backends build one selector per
+  target from its `:type`.
 - Parser tests run on recorded fixtures, never on a live process. Keep
   one integration test per runner that spawns the real thing and
   `skip-unless` it is installed.

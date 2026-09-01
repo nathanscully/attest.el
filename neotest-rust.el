@@ -97,21 +97,26 @@ Crate roots and integration test files map to the empty string."
         (puthash (neotest-rust--full-name pos root) pos table)))
     table))
 
+(defun neotest-rust--target-filters (targets root)
+  "Return libtest filter arguments selecting TARGETS in the crate at ROOT.
+Tests are matched with --exact.  libtest applies --exact to every
+filter, so when TARGETS includes a namespace the filters are prefixes
+and may select more tests than asked for."
+  (let ((names (mapcar (lambda (target) (neotest-rust--full-name target root)) targets)))
+    (if (seq-some (lambda (target) (eq (plist-get target :type) 'namespace)) targets)
+        names
+      (cons "--exact" names))))
+
 (defun neotest-rust--command (run)
   "Return the process spec for RUN, indexing its positions on the way."
   (let* ((root (plist-get run :root))
          (scope (plist-get run :scope))
-         (position (plist-get run :position))
          (index (neotest-rust--index run))
          (filters
           (pcase scope
-            ('test (list "--exact" (neotest-rust--full-name position root)))
-            ('namespace (list (neotest-rust--full-name position root)))
+            ('targets (neotest-rust--target-filters (plist-get run :targets) root))
             ('file (let ((prefix (neotest-rust-module-prefix (plist-get run :file) root)))
-                     (and (not (string-empty-p prefix)) (list prefix))))
-            ('results (cons "--exact"
-                            (mapcar (lambda (r) (plist-get r :runner-name))
-                                    (plist-get run :results)))))))
+                     (and (not (string-empty-p prefix)) (list prefix)))))))
     (plist-put run :state (list :index index))
     (list :command (append (list neotest-rust-cargo-executable "test" "-q")
                            neotest-rust-cargo-args
@@ -150,7 +155,6 @@ Paths in STDOUT are relative to RUN's directory."
     (append (list :id (apply #'neotest-make-id file names)
                   :type 'test
                   :name (car (last names))
-                  :runner-name name
                   :status status
                   :file file
                   :duration (when-let* ((s (alist-get 'exec_time event))) (* 1000 s)))

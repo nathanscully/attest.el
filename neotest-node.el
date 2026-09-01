@@ -13,9 +13,11 @@
 ;; Runs tests with Node's built-in runner (`node --test').  Two
 ;; reporters run at once: `spec' writes human-readable output to stdout
 ;; for the output buffer, and the bundled neotest-node-reporter.mjs
-;; writes one JSON event per line to stderr for parsing.  The reporter
-;; exists only because JSON.stringify drops an Error's message and
-;; stack; it adds nothing else.
+;; writes one `neotest:test' JSON event per finished test to stderr.
+;; The reporter tracks suite nesting and flattens the error's cause so
+;; the event already carries the full name path, a state and a message;
+;; neotest-vitest-reporter.mjs emits the same shape, and neotest-vitest.el
+;; reuses `neotest-node--parse-line'.
 
 ;;; Code:
 
@@ -113,32 +115,22 @@ Falls back to the `project-current' root."
 Used for `--test-name-pattern' here and for `-t' in neotest-vitest.el."
   (replace-regexp-in-string "[][.*+?^${}()|\\\\/]" "\\\\\\&" string))
 
-(defun neotest-node--name-pattern (id type)
-  "Return a --test-name-pattern argument selecting ID of TYPE."
+(defun neotest-node--name-pattern (target)
+  "Return a --test-name-pattern argument selecting TARGET.
+A test matches exactly; a namespace also matches every test below it."
   (let ((name (neotest-node-regexp-quote
-               (string-join (neotest-id-names id) " "))))
+               (string-join (neotest-id-names (plist-get target :id)) " "))))
     (format "--test-name-pattern=^%s%s" name
-            (if (eq type 'test) "$" "( |$)"))))
+            (if (eq (plist-get target :type) 'namespace) "( |$)" "$"))))
 
 (defun neotest-node--command (run)
   "Return the process spec for RUN."
   (let* ((scope (plist-get run :scope))
          (root (plist-get run :root))
-         (position (plist-get run :position))
-         (files (pcase scope
-                  ('project (plist-get run :files))
-                  ('results (delete-dups
-                             (mapcar (lambda (r) (plist-get r :file))
-                                     (plist-get run :results))))
-                  (_ (list (plist-get run :file)))))
-         (patterns (pcase scope
-                     ((or 'test 'namespace)
-                      (list (neotest-node--name-pattern
-                             (plist-get position :id) (plist-get position :type))))
-                     ('results
-                      (mapcar (lambda (r)
-                                (neotest-node--name-pattern (plist-get r :id) 'test))
-                              (plist-get run :results))))))
+         (files (neotest-run-files run))
+         (patterns (and (eq scope 'targets)
+                        (mapcar #'neotest-node--name-pattern
+                                (plist-get run :targets)))))
     (when (and (eq scope 'project) (null files))
       (user-error "Neotest: no test files found under %s" root))
     (list :command (append (list neotest-node-executable "--test")
@@ -153,21 +145,6 @@ Used for `--test-name-pattern' here and for `-t' in neotest-vitest.el."
           :env neotest-node-env
           :parse-stream 'stderr)))
 
-(defun neotest-node--set-active (run nesting name)
-  "Record NAME as the running test at NESTING for RUN, dropping deeper levels."
-  (let ((active (seq-filter (lambda (entry) (< (car entry) nesting))
-                            (plist-get (plist-get run :state) :active))))
-    (plist-put run :state
-               (plist-put (plist-get run :state) :active
-                          (cons (cons nesting name) active)))))
-
-(defun neotest-node--names (run nesting name)
-  "Return the ancestor names above NESTING in RUN followed by NAME."
-  (let ((active (plist-get (plist-get run :state) :active)))
-    (append (mapcar #'cdr (sort (seq-filter (lambda (e) (< (car e) nesting)) active)
-                                (lambda (a b) (< (car a) (car b)))))
-            (list name))))
-
 (defun neotest-node--frame-in-file (stack file)
   "Return (LINE . COLUMN) of the first frame of STACK located in FILE."
   (let ((start 0) found)
@@ -180,63 +157,44 @@ Used for `--test-name-pattern' here and for `-t' in neotest-vitest.el."
                           (string-to-number (match-string 3 stack))))))
     found))
 
-(defun neotest-node--failure (error file)
-  "Return (:message MESSAGE :location (LINE . COLUMN)) for ERROR in FILE."
-  (let* ((cause (alist-get 'cause error))
-         (inner (if (consp cause) cause error))
-         (message (or (alist-get 'message inner)
-                      (and (stringp cause) cause)
-                      (alist-get 'message error)
-                      "test failed"))
-         (stack (or (alist-get 'stack inner) "")))
-    (list :message message
-          :stack stack
-          :location (neotest-node--frame-in-file stack file))))
-
-(defun neotest-node--result (run type data)
-  "Return a result plist for a TYPE event carrying DATA in RUN."
-  (let* ((name (alist-get 'name data))
-         (file (alist-get 'file data))
-         (nesting (or (alist-get 'nesting data) 0))
-         (details (alist-get 'details data))
-         (kind (if (equal (alist-get 'type details) "suite") 'namespace 'test))
-         (names (neotest-node--names run nesting name))
-         (status (cond ((alist-get 'skip data) 'skipped)
-                       ((alist-get 'todo data) 'todo)
-                       ((string= type "test:fail") 'failed)
-                       (t 'passed)))
-         (failure (and (eq status 'failed)
-                       (neotest-node--failure (alist-get 'error details) file))))
+(defun neotest-node--result (event)
+  "Return a result plist for a `neotest:test' EVENT.
+EVENT carries `names' outermost first, `file', `location', `state',
+`duration' and `errors'.  Both bundled reporters emit this shape."
+  (let* ((names (append (alist-get 'names event) nil))
+         (file (alist-get 'file event))
+         (location (alist-get 'location event))
+         (error (car (append (alist-get 'errors event) nil)))
+         (stack (or (alist-get 'stack error) ""))
+         (status (pcase (alist-get 'state event)
+                   ("passed" 'passed)
+                   ("failed" 'failed)
+                   ("todo" 'todo)
+                   (_ (if (equal (alist-get 'mode event) "todo") 'todo 'skipped)))))
     (append (list :id (apply #'neotest-make-id file names)
-                  :type kind
-                  :name name
+                  :type (if (equal (alist-get 'kind event) "namespace") 'namespace 'test)
+                  :name (car (last names))
                   :status status
                   :file file
-                  :line (alist-get 'line data)
-                  :column (alist-get 'column data)
-                  :duration (alist-get 'duration_ms details))
-            failure)))
+                  :line (alist-get 'line location)
+                  :column (alist-get 'column location)
+                  :duration (alist-get 'duration event))
+            (when (eq status 'failed)
+              (list :message (or (alist-get 'message error) "test failed")
+                    :stack stack
+                    :location (neotest-node--frame-in-file stack file))))))
 
 (defun neotest-node--parse-line (run line)
-  "Parse one JSON event LINE from RUN's reporter into a result or nil.
-Lines that are not events, such as syntax errors, go to the output."
-  (unless (string-prefix-p "{" line)
-    (neotest-append-output run (concat line "\n")))
-  (when (string-prefix-p "{" line)
-    (let* ((event (ignore-errors
-                    (json-parse-string line :object-type 'alist
-                                       :null-object nil :false-object nil)))
-           (type (alist-get 'type event))
-           (data (alist-get 'data event))
-           (name (alist-get 'name data))
-           (file (alist-get 'file data)))
-      (pcase type
-        ("test:start"
-         (neotest-node--set-active run (or (alist-get 'nesting data) 0) name)
-         nil)
-        ((or "test:pass" "test:fail")
-         (when (and file name (not (string-suffix-p name file)))
-           (neotest-node--result run type data)))))))
+  "Parse one reporter LINE from RUN into a result or nil.
+Lines that are not JSON, such as syntax errors, go to the output."
+  (if (string-prefix-p "{" line)
+      (when-let* ((event (ignore-errors
+                           (json-parse-string line :object-type 'alist
+                                              :null-object nil :false-object nil))))
+        (when (equal (alist-get 'type event) "neotest:test")
+          (neotest-node--result event)))
+    (neotest-append-output run (concat line "\n"))
+    nil))
 
 (neotest-register-backend 'node
   :predicate #'neotest-node--buffer-p

@@ -109,8 +109,7 @@
   (dolist (buffer (buffer-list))
     (with-current-buffer buffer
       (when (and neotest-status-mode buffer-file-name
-                 (or (memq (plist-get run :scope) '(project results))
-                     (equal (plist-get run :file) buffer-file-name)))
+                 (member buffer-file-name (neotest-run-files run)))
         (dolist (result (neotest-results-for-file buffer-file-name))
           (neotest-status--place result 'running))))))
 

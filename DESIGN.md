@@ -10,7 +10,7 @@ A backend is a plist registered with `neotest-register-backend`.
 
 | key | type | purpose |
 |---|---|---|
-| `:predicate` | mode symbol, regexp, or thunk | does this backend own the current buffer |
+| `:predicate` | `() -> bool` | does this backend own the current buffer |
 | `:test-file-p` | `(file) -> bool` | which project files are test files |
 | `:root` | `(file) -> dir` | project root; default `project-current` |
 | `:query` | `(LANG . QUERY)` or `(file) -> (LANG . QUERY)` | tree-sitter discovery query |
@@ -51,12 +51,17 @@ when the runner gives one.
 
 Run:
 
-    (:backend :scope :file :root :position :positions :files :results
+    (:backend :scope :file :root :targets :files :index
      :command :directory :process :status :result-ids :state
      :start-time :end-time :output-buffer)
 
-`:scope` is `test`, `namespace`, `file`, `project` or `results`
-(rerun-failed).
+`:scope` is `file`, `project` or `targets`. A `targets` run carries
+`:targets`, a list of position plists (`:id`, `:type`, `:file`);
+run-at-point passes one, rerun-failed passes the failed results, which
+have the same keys. Backends build one selector per target from its
+`:type`: a test matches exactly, a namespace matches every test below
+it. libtest applies `--exact` globally, so cargo drops it when any
+target is a namespace and may over-select.
 
 ### Id scheme
 
