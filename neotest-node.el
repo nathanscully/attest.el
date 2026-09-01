@@ -91,11 +91,12 @@ Falls back to the `project-current' root."
        (derived-mode-p 'typescript-ts-mode 'tsx-ts-mode 'js-ts-mode 'js-mode)
        (neotest-node-test-file-p buffer-file-name)))
 
-(defun neotest-node--query ()
-  "Return the discovery query for the current buffer's language."
-  (cons (cond ((derived-mode-p 'tsx-ts-mode) 'tsx)
-              ((derived-mode-p 'typescript-ts-mode) 'typescript)
-              (t 'javascript))
+(defun neotest-node--query (file)
+  "Return the discovery query for FILE's language."
+  (cons (pcase (file-name-extension file)
+          ("tsx" 'tsx)
+          ((or "ts" "mts" "cts") 'typescript)
+          (_ 'javascript))
         neotest-node--query))
 
 (defun neotest-node-regexp-quote (string)

@@ -12,14 +12,19 @@
 
 ;; neotest runs tests at point, in the current file, or across the
 ;; project through a per-language backend, and streams structured
-;; results to consumers.  Core depends only on Emacs built-ins.
+;; results to consumers.  Core depends only on Emacs built-ins and
+;; requires an Emacs built with tree-sitter.
 ;;
 ;; A backend is registered with `neotest-register-backend' and supplies:
 ;;   :predicate   how to recognise a buffer it owns
 ;;   :test-file-p how to recognise a test file path
-;;   :query       a treesit query for test discovery (see neotest-treesit.el)
+;;   :query       a tree-sitter query that finds tests and groups
 ;;   :command     how to turn a run spec into a process command
 ;;   :parse-line  how to turn one line of runner output into results
+;;
+;; Core discovers positions with the query, indexes them per run, and
+;; fills each result's :line, :column and :type from the matching
+;; position, so backends only have to produce ids and statuses.
 ;;
 ;; Consumers subscribe with `neotest-run-started-hook',
 ;; `neotest-result-hook' and `neotest-run-finished-hook'.
@@ -33,6 +38,10 @@
 (require 'project)
 (require 'compile)
 (require 'ansi-color)
+(require 'treesit)
+
+(unless (treesit-available-p)
+  (error "Neotest requires an Emacs built with tree-sitter support"))
 
 (defgroup neotest nil
   "Language-agnostic test runner."
@@ -76,10 +85,10 @@ PROPS is a plist with these keys:
               function of no arguments returning non-nil in buffers the
               backend owns.
 :test-file-p  Function of a file name returning non-nil for test files.
-:query        Cons (LANGUAGE . QUERY) for `neotest-treesit-positions',
-              or a function of no arguments returning such a cons.
-:positions    Optional function of a buffer returning positions, used
-              instead of :query.
+:query        Cons (LANGUAGE . QUERY), or a function of a file name
+              returning one.  QUERY is a tree-sitter query whose captures
+              are @test.definition, @test.name, @namespace.definition
+              and @namespace.name; see `neotest-file-positions'.
 :command      Function of a run plist returning a plist with :command
               \(argv list), :directory and optionally :env (list of
               \"VAR=VALUE\" strings) and :parse-stream (`stdout' or
@@ -153,24 +162,144 @@ PROPS is a plist with these keys:
             (project-root project))
           (file-name-directory file))))))
 
+(defun neotest--ensure-language (language)
+  "Make sure the grammar for LANGUAGE is installed, or signal a user error."
+  (unless (if (fboundp 'treesit-ensure-installed)
+              (treesit-ensure-installed language)
+            (treesit-language-available-p language))
+    (user-error "Neotest: no tree-sitter grammar for %s; run `treesit-install-language-grammar'"
+                language)))
+
+(defun neotest--query (backend file)
+  "Return the (LANGUAGE . QUERY) of BACKEND for FILE."
+  (let ((query (plist-get (neotest-backend-props backend) :query)))
+    (unless query (user-error "Neotest: backend %s has no :query" backend))
+    (if (functionp query) (funcall query file) query)))
+
+(defun neotest--name-text (node)
+  "Return the test name expressed by NODE.
+String literals lose their quotes; template strings are concatenated;
+anything else is returned as source text."
+  (pcase (treesit-node-type node)
+    ("string"
+     (mapconcat (lambda (child) (treesit-node-text child t))
+                (treesit-filter-child
+                 node (lambda (child)
+                        (member (treesit-node-type child)
+                                '("string_fragment" "escape_sequence"))))
+                ""))
+    ("template_string"
+     (mapconcat (lambda (child) (treesit-node-text child t))
+                (treesit-filter-child node (lambda (child) (treesit-node-check child 'named)))
+                ""))
+    (_ (treesit-node-text node t))))
+
+(defun neotest--match-position (match file)
+  "Return an unlinked position plist for MATCH in FILE, or nil.
+MATCH is one grouped result of `treesit-query-capture'."
+  (let* ((kind (cond ((alist-get 'test.definition match) 'test)
+                     ((alist-get 'namespace.definition match) 'namespace)))
+         (definition (and kind (alist-get (intern (format "%s.definition" kind)) match)))
+         (name-node (and kind (alist-get (intern (format "%s.name" kind)) match))))
+    (when (and definition name-node)
+      (list :type kind
+            :name (neotest--name-text name-node)
+            :file file
+            :line (line-number-at-pos (treesit-node-start definition) t)
+            :column (1+ (save-excursion
+                          (goto-char (treesit-node-start definition))
+                          (current-column)))
+            :beg (treesit-node-start definition)
+            :end (treesit-node-end definition)))))
+
+(defun neotest--link-positions (positions file)
+  "Assign :parent-id and :id to POSITIONS from FILE by range containment.
+POSITIONS must be sorted by :beg ascending."
+  (let (stack)
+    (dolist (pos positions)
+      (while (and stack
+                  (>= (plist-get pos :beg) (plist-get (car stack) :end)))
+        (pop stack))
+      (let* ((parent (car stack))
+             (names (append (and parent (plist-get parent :names))
+                            (list (plist-get pos :name)))))
+        (plist-put pos :parent-id (and parent (plist-get parent :id)))
+        (plist-put pos :names names)
+        (plist-put pos :id (apply #'neotest-make-id file names))
+        (when (eq (plist-get pos :type) 'namespace)
+          (push pos stack))))
+    positions))
+
+(defun neotest--buffer-positions (file language query)
+  "Return the positions QUERY for LANGUAGE finds in the current buffer.
+FILE names the buffer's file in the resulting ids."
+  (neotest--ensure-language language)
+  (let* ((root (treesit-parser-root-node (treesit-parser-create language)))
+         (matches (treesit-query-capture root query nil nil nil t))
+         (positions (delq nil (mapcar (lambda (m) (neotest--match-position m file))
+                                      matches))))
+    (neotest--link-positions
+     (sort positions (lambda (a b) (< (plist-get a :beg) (plist-get b :beg))))
+     file)))
+
 (defun neotest-positions (&optional buffer)
   "Return the test positions discovered in BUFFER.
 Each position is a plist with :id, :type (`test' or `namespace'),
 :name, :file, :line, :column, :beg, :end and :parent-id."
   (with-current-buffer (or buffer (current-buffer))
     (let* ((backend (neotest--require-backend))
-           (props (neotest-backend-props backend)))
-      (cond
-       ((plist-get props :positions)
-        (funcall (plist-get props :positions) (current-buffer)))
-       ((plist-get props :query)
-        (require 'neotest-treesit)
-        (let ((query (plist-get props :query)))
-          (when (functionp query) (setq query (funcall query)))
-          (neotest-treesit-positions (current-buffer) (car query) (cdr query))))
-       (t (user-error "Neotest: backend %s cannot discover tests" backend))))))
+           (file (or (and buffer-file-name (expand-file-name buffer-file-name))
+                     (buffer-name)))
+           (query (neotest--query backend file)))
+      (neotest--buffer-positions file (car query) (cdr query)))))
 
-(declare-function neotest-treesit-positions "neotest-treesit")
+(defun neotest-file-positions (file &optional backend)
+  "Return the positions in FILE using BACKEND's query.
+BACKEND defaults to the first whose :test-file-p accepts FILE.  A live
+buffer visiting FILE is used when there is one; otherwise the file is
+parsed in a temporary buffer.  Returns nil when FILE cannot be read."
+  (let* ((file (expand-file-name file))
+         (backend (or backend (neotest-backend-for-file file)
+                      (user-error "Neotest: no backend for %s" file)))
+         (query (neotest--query backend file)))
+    (cond
+     ((find-buffer-visiting file)
+      (with-current-buffer (find-buffer-visiting file)
+        (neotest--buffer-positions file (car query) (cdr query))))
+     ((file-readable-p file)
+      (with-temp-buffer
+        (insert-file-contents file)
+        (neotest--buffer-positions file (car query) (cdr query)))))))
+
+(defun neotest-run-file-positions (run file)
+  "Return the positions of FILE for RUN, parsing FILE at most once per run."
+  (let ((index (or (plist-get run :index)
+                   (let ((table (make-hash-table :test 'equal)))
+                     (plist-put run :index table)
+                     table)))
+        (file (expand-file-name file)))
+    (let ((cached (gethash file index 'missing)))
+      (if (eq cached 'missing)
+          (puthash file (neotest-file-positions file (plist-get run :backend)) index)
+        cached))))
+
+(defun neotest-run-files (run)
+  "Return the files RUN covers."
+  (pcase (plist-get run :scope)
+    ('project (plist-get run :files))
+    ('results (delete-dups (mapcar (lambda (r) (plist-get r :file))
+                                   (plist-get run :results))))
+    (_ (list (plist-get run :file)))))
+
+(defun neotest-run-positions (run)
+  "Return every position in the files RUN covers."
+  (mapcan (lambda (file) (copy-sequence (neotest-run-file-positions run file)))
+          (neotest-run-files run)))
+
+(defun neotest-run-position (run id)
+  "Return the position with ID discovered for RUN, or nil."
+  (seq-find (lambda (pos) (equal (plist-get pos :id) id))
+            (neotest-run-file-positions run (neotest-id-file id))))
 
 (defun neotest-position-at-point (&optional positions)
   "Return the innermost position in POSITIONS containing point.
@@ -216,8 +345,9 @@ Tests win over namespaces of equal extent.  POSITIONS defaults to
   neotest--last-run)
 
 (defun neotest-run-results (run)
-  "Return the results recorded during RUN, in arrival order."
-  (mapcar #'neotest-result (reverse (plist-get run :result-ids))))
+  "Return the results recorded during RUN, in arrival order.
+Ids reported more than once, such as parametrized cases, appear once."
+  (mapcar #'neotest-result (delete-dups (reverse (plist-get run :result-ids)))))
 
 (defun neotest-run-failed-results (run)
   "Return the failed results of RUN."
@@ -225,9 +355,18 @@ Tests win over namespaces of equal extent.  POSITIONS defaults to
               (neotest-run-results run)))
 
 (defun neotest--record (run result)
-  "Store RESULT from RUN and notify consumers."
+  "Store RESULT from RUN and notify consumers.
+When discovery knows the test, its :line, :column and :type come from
+the position, so the runner's own notion of where a test lives is only
+a fallback."
   (let ((id (plist-get result :id)))
     (unless id (error "Neotest: result without :id: %S" result))
+    (when-let* ((pos (and (plist-get run :backend) (neotest-run-position run id))))
+      (plist-put result :line (plist-get pos :line))
+      (plist-put result :column (plist-get pos :column))
+      (unless (plist-get result :type)
+        (plist-put result :type (plist-get pos :type))))
+    (unless (plist-get result :type) (plist-put result :type 'test))
     (puthash id result neotest--results)
     (plist-put run :result-ids (cons id (plist-get run :result-ids)))
     (run-hook-with-args 'neotest-result-hook run result)))
@@ -470,6 +609,7 @@ are merged into the run plist; `test' and `namespace' expect
     (let ((run (copy-sequence last)))
       (plist-put run :result-ids nil)
       (plist-put run :state nil)
+      (plist-put run :index nil)
       (neotest--start run))))
 
 ;;;###autoload
@@ -486,6 +626,7 @@ are merged into the run plist; `test' and `namespace' expect
       (plist-put run :results failed)
       (plist-put run :result-ids nil)
       (plist-put run :state nil)
+      (plist-put run :index nil)
       (neotest--start run))))
 
 ;;;###autoload

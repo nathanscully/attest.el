@@ -34,7 +34,7 @@
 
 (ert-deftest neotest-rust-discovers-attributed-functions ()
   (skip-unless (treesit-language-available-p 'rust))
-  (let ((positions (neotest-rust--file-positions neotest-rust-test--lib)))
+  (let ((positions (neotest-file-positions neotest-rust-test--lib 'rust)))
     (should (equal (mapcar (lambda (p) (neotest-id-names (plist-get p :id))) positions)
                    '(("tests") ("tests" "adds") ("tests" "fails_on_purpose")
                      ("tests" "ignored_one") ("tests" "panics"))))
@@ -43,7 +43,11 @@
 (ert-deftest neotest-rust-results-resolve-to-files-and-lines ()
   (skip-unless (treesit-language-available-p 'rust))
   (let* ((run (neotest-rust-test--project-run))
-         (results (delq nil (mapcar (lambda (l) (neotest-rust--parse-line run l))
+         (neotest-result-hook nil)
+         (results (delq nil (mapcar (lambda (l)
+                                      (when-let* ((r (neotest-rust--parse-line run l)))
+                                        (neotest--record run r)
+                                        r))
                                     (neotest-test-fixture-lines "rs-events.jsonl")))))
     (should (equal (mapcar (lambda (r) (plist-get r :runner-name)) results)
                    '("scanner::tests::counts_words" "tests::adds" "tests::ignored_one"

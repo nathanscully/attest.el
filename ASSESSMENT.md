@@ -48,14 +48,36 @@ What each backend taught:
   under `src/` and `tests/` synchronously (11.7 ms each).
 - **pytest** node ids already have the id shape. The plugin emits
   `rootdir` so paths resolve on any machine. Decorated tests report the
-  decorator line, discovery reports the `def` line; the fringe marker
-  lands on the decorator. Skips surface in the `setup` phase.
+  decorator line and discovery reports the `def` line; since core now
+  takes the line from the position, the marker lands on the `def`.
+  Skips surface in the `setup` phase.
 
 Live in the daemon: vitest `neotest-run-at-point` on
 `poly/packages/core/src/dispatch.test.ts` ran one test in
 `packages/core` with `-t "^dispatch loop runs handlers …$"`; cargo on the
 fixture crate placed the flymake error at `src/lib.rs:19:9`; pytest on
 the fixture placed it at the `raise` line.
+
+## Decision: tree-sitter is required
+
+Taken on 1 September 2026 after the three extra backends. Evidence that
+Emacs is moving this way, from the NEWS files of the installed 31.1:
+`treesit-enabled-modes` turns every ts-mode on with one setting (26
+languages in the bundled remap table); `treesit-auto-install-grammar`
+defaults to `ask`, so a missing grammar becomes a prompt to build it;
+loading a ts-mode remaps the classic mode (Emacs 30); new built-in
+modes (Elixir, HEEx, Lua, PHP, `treesit-x`) have no classic version.
+The qualifier: `treesit-enabled-modes` still defaults to `nil`, and
+auto-install needs a C compiler and git.
+
+What it bought: `:positions` and `neotest-treesit.el` are gone, core
+indexes positions per run and fills `:line`, `:column` and `:type` on
+every result, the rust backend lost 24 lines and its private index,
+and pytest's decorator-line drift disappeared because the position
+wins over the runner's line. Cost: the package does nothing on an
+Emacs without tree-sitter or without the grammar for the language, and
+project scope for rust still parses every file synchronously before the
+run.
 
 ## Where it breaks down
 
@@ -111,7 +133,7 @@ None of these forced a third-party dependency.
 | | neotest.el | verdict.el | test-cockpit.el |
 |---|---|---|---|
 | deps | none | treemacs, dash | projectile |
-| core size | 504 lines + consumers of 99-129 | 1384 | 719 |
+| core size | 661 lines + consumers of 111-129 | 1384 | 719 |
 | discovery | treesit query, shared across languages | per-backend (dart uses treesit) | regexp + sexp motion |
 | results UI | flymake inline, fringe, tabulated-list, compile-style output | treemacs tree | compile buffer, transient menu |
 | runner scopes | test, namespace, file, project, rerun-failed | test, group, file, module, project, rerun-failed | function, module, project |

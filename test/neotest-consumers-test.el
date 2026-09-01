@@ -24,7 +24,7 @@
       (when-let* ((r (neotest-node--parse-line run line)))
         (plist-put r :file file)
         (plist-put r :id (apply #'neotest-make-id file (neotest-id-names (plist-get r :id))))
-        (neotest--record run r)))
+        (neotest--record (append (list :file file) run) r)))
     (setq neotest--last-run run)
     run))
 
