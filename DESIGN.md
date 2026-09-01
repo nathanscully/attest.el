@@ -81,8 +81,8 @@ shallower entries.
       -> backend :command
       -> make-process, stdout -> *neotest* (ansi-color, compilation-minor-mode)
                        stderr -> line splitter -> backend :parse-line
-      -> neotest--record: puthash id result; run neotest-result-hook
-      -> sentinel: neotest-run-finished-hook, summary message
+      -> neotest--record: puthash id result; run neotest-result-functions
+      -> sentinel: neotest-run-finished-functions, summary message
 
 Consumers subscribe to three hooks and read the shared cache
 `neotest--results` (id -> latest result). Core knows nothing about them.

@@ -1,5 +1,11 @@
 ;;; neotest-status.el --- Fringe pass/fail markers for neotest -*- lexical-binding: t; -*-
 
+;; Copyright (C) 2026 Nathan Scully
+
+;; Author: Nathan Scully
+;; Maintainer: Nathan Scully
+;; URL: https://github.com/nathanscully/emacs-neotest
+
 ;; This file is not part of GNU Emacs.
 
 ;;; Commentary:
@@ -19,22 +25,26 @@
 (defface neotest-status-passed
   '((t :inherit success))
   "Fringe face for passed tests."
-  :group 'neotest)
+  :group 'neotest
+  :package-version '(neotest . "0.1.0"))
 
 (defface neotest-status-failed
   '((t :inherit error))
   "Fringe face for failed tests."
-  :group 'neotest)
+  :group 'neotest
+  :package-version '(neotest . "0.1.0"))
 
 (defface neotest-status-skipped
   '((t :inherit shadow))
   "Fringe face for skipped and todo tests."
-  :group 'neotest)
+  :group 'neotest
+  :package-version '(neotest . "0.1.0"))
 
 (defface neotest-status-running
   '((t :inherit warning))
   "Fringe face for tests in the current run."
-  :group 'neotest)
+  :group 'neotest
+  :package-version '(neotest . "0.1.0"))
 
 (when (fboundp 'define-fringe-bitmap)
   (define-fringe-bitmap 'neotest-status-dot
@@ -110,8 +120,8 @@
   :lighter nil
   (if neotest-status-mode
       (progn
-        (add-hook 'neotest-result-hook #'neotest-status--on-result)
-        (add-hook 'neotest-run-started-hook #'neotest-status--on-start)
+        (add-hook 'neotest-result-functions #'neotest-status--on-result)
+        (add-hook 'neotest-run-started-functions #'neotest-status--on-start)
         (neotest-status--render-buffer))
     (neotest-status--clear)))
 

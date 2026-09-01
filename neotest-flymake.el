@@ -1,5 +1,11 @@
 ;;; neotest-flymake.el --- Show test failures through flymake -*- lexical-binding: t; -*-
 
+;; Copyright (C) 2026 Nathan Scully
+
+;; Author: Nathan Scully
+;; Maintainer: Nathan Scully
+;; URL: https://github.com/nathanscully/emacs-neotest
+
 ;; This file is not part of GNU Emacs.
 
 ;;; Commentary:
@@ -92,7 +98,7 @@
   (if neotest-flymake-mode
       (progn
         (add-hook 'flymake-diagnostic-functions #'neotest-flymake-backend nil t)
-        (add-hook 'neotest-run-finished-hook #'neotest-flymake--refresh)
+        (add-hook 'neotest-run-finished-functions #'neotest-flymake--refresh)
         (when flymake-mode (flymake-start nil t)))
     (remove-hook 'flymake-diagnostic-functions #'neotest-flymake-backend t)
     (when flymake-mode (flymake-start nil t))))

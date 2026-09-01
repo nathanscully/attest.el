@@ -1,5 +1,11 @@
 ;;; neotest-pytest.el --- pytest backend for neotest -*- lexical-binding: t; -*-
 
+;; Copyright (C) 2026 Nathan Scully
+
+;; Author: Nathan Scully
+;; Maintainer: Nathan Scully
+;; URL: https://github.com/nathanscully/emacs-neotest
+
 ;; This file is not part of GNU Emacs.
 
 ;;; Commentary:
@@ -13,7 +19,6 @@
 ;;; Code:
 
 (require 'neotest)
-(require 'json)
 
 (defgroup neotest-pytest nil
   "Pytest backend for neotest."
@@ -22,15 +27,18 @@
 
 (defcustom neotest-pytest-command '("pytest")
   "Program and leading arguments used to run pytest."
-  :type '(repeat string))
+  :type '(repeat string)
+  :package-version '(neotest . "0.1.0"))
 
 (defcustom neotest-pytest-extra-args nil
   "Arguments appended before the test selection."
-  :type '(repeat string))
+  :type '(repeat string)
+  :package-version '(neotest . "0.1.0"))
 
 (defcustom neotest-pytest-test-file-regexp "\\(?:\\`\\|/\\)\\(?:test_[^/]*\\|[^/]*_test\\)\\.py\\'"
   "Regexp matching pytest test files."
-  :type 'regexp)
+  :type 'regexp
+  :package-version '(neotest . "0.1.0"))
 
 (defconst neotest-pytest--plugin-dir
   (file-name-directory (or load-file-name buffer-file-name))

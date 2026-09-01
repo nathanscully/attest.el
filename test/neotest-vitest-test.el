@@ -100,8 +100,8 @@
   (let* ((neotest-save-before-run nil)
          (neotest-display-output nil)
          (results nil) (finished nil)
-         (neotest-result-hook (list (lambda (_run r) (push r results))))
-         (neotest-run-finished-hook (list (lambda (_run) (setq finished t)))))
+         (neotest-result-functions (list (lambda (_run r) (push r results))))
+         (neotest-run-finished-functions (list (lambda (_run) (setq finished t)))))
     (with-temp-buffer
       (setq buffer-file-name neotest-vitest-test--file)
       (setq default-directory neotest-vitest-test--root)

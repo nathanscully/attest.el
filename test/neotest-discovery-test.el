@@ -101,7 +101,7 @@
   (skip-unless (treesit-language-available-p 'python))
   (let* ((file (neotest-test-fixture "py/test_demo.py"))
          (run (list :backend 'pytest :scope 'file :file file :result-ids nil))
-         (neotest-result-hook nil)
+         (neotest-result-functions nil)
          (result (list :id (neotest-make-id file "test_skipped") :status 'skipped
                        :file file :line 17)))
     (require 'neotest-pytest)
