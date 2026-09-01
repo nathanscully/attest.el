@@ -20,7 +20,7 @@ Backends: `node --test`, vitest, `cargo test`, pytest.
 (require 'neotest-list)
 (global-neotest-flymake-mode 1)
 (global-neotest-status-mode 1)
-(keymap-global-set "C-c t" neotest-command-map)
+(keymap-global-set "C-c t" neotest-prefix-map)
 ```
 
 | key | command |

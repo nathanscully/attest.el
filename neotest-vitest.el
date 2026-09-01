@@ -1,5 +1,11 @@
 ;;; neotest-vitest.el --- vitest backend for neotest -*- lexical-binding: t; -*-
 
+;; Copyright (C) 2026 Nathan Scully
+
+;; Author: Nathan Scully
+;; Maintainer: Nathan Scully
+;; URL: https://github.com/nathanscully/emacs-neotest
+
 ;; This file is not part of GNU Emacs.
 
 ;;; Commentary:
@@ -18,7 +24,6 @@
 
 (require 'neotest)
 (require 'neotest-node)
-(require 'json)
 
 (defgroup neotest-vitest nil
   "Vitest backend for neotest."
@@ -28,11 +33,15 @@
 (defcustom neotest-vitest-command nil
   "Program and leading arguments used to run vitest.
 When nil, the nearest node_modules/.bin/vitest above the file is used."
-  :type '(choice (const nil) (repeat string)))
+  :type '(choice
+          (const :tag "Nearest node_modules/.bin/vitest" nil)
+          (repeat :tag "Program and arguments" string))
+  :package-version '(neotest . "0.1.0"))
 
 (defcustom neotest-vitest-extra-args nil
   "Arguments inserted after `vitest run'."
-  :type '(repeat string))
+  :type '(repeat string)
+  :package-version '(neotest . "0.1.0"))
 
 (defconst neotest-vitest--reporter
   (expand-file-name "neotest-vitest-reporter.mjs"

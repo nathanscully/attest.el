@@ -1,5 +1,11 @@
 ;;; neotest-list.el --- Tabulated results view for neotest -*- lexical-binding: t; -*-
 
+;; Copyright (C) 2026 Nathan Scully
+
+;; Author: Nathan Scully
+;; Maintainer: Nathan Scully
+;; URL: https://github.com/nathanscully/emacs-neotest
+
 ;; This file is not part of GNU Emacs.
 
 ;;; Commentary:
@@ -14,8 +20,11 @@
 (require 'tabulated-list)
 (require 'neotest)
 
-(defvar neotest-list-buffer-name "*neotest results*"
-  "Name of the results buffer.")
+(defcustom neotest-list-buffer-name "*neotest results*"
+  "Name of the buffer showing the results of the last run."
+  :type 'string
+  :group 'neotest
+  :package-version '(neotest . "0.1.0"))
 
 (defvar-local neotest-list--failures-only nil
   "Non-nil when only failed results are listed.")
@@ -112,7 +121,7 @@
     (with-current-buffer buffer
       (unless (derived-mode-p 'neotest-list-mode)
         (neotest-list-mode))
-      (add-hook 'neotest-run-finished-hook #'neotest-list--refresh)
+      (add-hook 'neotest-run-finished-functions #'neotest-list--refresh)
       (tabulated-list-revert))
     (pop-to-buffer buffer)))
 

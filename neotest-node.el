@@ -1,5 +1,11 @@
 ;;; neotest-node.el --- node --test backend for neotest -*- lexical-binding: t; -*-
 
+;; Copyright (C) 2026 Nathan Scully
+
+;; Author: Nathan Scully
+;; Maintainer: Nathan Scully
+;; URL: https://github.com/nathanscully/emacs-neotest
+
 ;; This file is not part of GNU Emacs.
 
 ;;; Commentary:
@@ -14,7 +20,6 @@
 ;;; Code:
 
 (require 'neotest)
-(require 'json)
 (require 'url-util)
 
 (defgroup neotest-node nil
@@ -23,21 +28,25 @@
   :prefix "neotest-node-")
 
 (defcustom neotest-node-executable "node"
-  "Program used to run tests."
-  :type 'string)
+  "Node program that runs `node --test'."
+  :type 'string
+  :package-version '(neotest . "0.1.0"))
 
 (defcustom neotest-node-extra-args nil
   "Arguments inserted after `--test'."
-  :type '(repeat string))
+  :type '(repeat string)
+  :package-version '(neotest . "0.1.0"))
 
 (defcustom neotest-node-env '("FORCE_COLOR=1")
   "Environment entries added when running tests."
-  :type '(repeat string))
+  :type '(repeat string)
+  :package-version '(neotest . "0.1.0"))
 
 (defcustom neotest-node-test-file-regexp
   "\\(?:[._-]test\\|[._-]spec\\)\\.[cm]?[jt]sx?\\'"
   "Regexp matching test file names."
-  :type 'regexp)
+  :type 'regexp
+  :package-version '(neotest . "0.1.0"))
 
 (defconst neotest-node--reporter
   (expand-file-name "neotest-node-reporter.mjs"
@@ -100,7 +109,8 @@ Falls back to the `project-current' root."
         neotest-node--query))
 
 (defun neotest-node-regexp-quote (string)
-  "Return STRING escaped for use in a JavaScript regular expression."
+  "Return STRING escaped for use in a JavaScript regular expression.
+Used for `--test-name-pattern' here and for `-t' in neotest-vitest.el."
   (replace-regexp-in-string "[][.*+?^${}()|\\\\/]" "\\\\\\&" string))
 
 (defun neotest-node--name-pattern (id type)

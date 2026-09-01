@@ -1,6 +1,9 @@
 ;;; neotest.el --- Language-agnostic test runner with pluggable backends -*- lexical-binding: t; -*-
 
+;; Copyright (C) 2026 Nathan Scully
+
 ;; Author: Nathan Scully
+;; Maintainer: Nathan Scully
 ;; Version: 0.1.0
 ;; Package-Requires: ((emacs "30.1"))
 ;; Keywords: tools, convenience
@@ -26,15 +29,14 @@
 ;; fills each result's :line, :column and :type from the matching
 ;; position, so backends only have to produce ids and statuses.
 ;;
-;; Consumers subscribe with `neotest-run-started-hook',
-;; `neotest-result-hook' and `neotest-run-finished-hook'.
+;; Consumers subscribe with `neotest-run-started-functions',
+;; `neotest-result-functions' and `neotest-run-finished-functions'.
 ;; neotest-flymake.el, neotest-status.el and neotest-list.el are the
 ;; consumers shipped with the package; none of them is required.
 
 ;;; Code:
 
-(require 'cl-lib)
-(require 'subr-x)
+(eval-when-compile (require 'subr-x))
 (require 'project)
 (require 'compile)
 (require 'ansi-color)
@@ -50,26 +52,38 @@
 
 (defcustom neotest-output-buffer-name "*neotest*"
   "Name of the buffer receiving raw runner output."
-  :type 'string)
+  :type 'string
+  :package-version '(neotest . "0.1.0"))
 
 (defcustom neotest-display-output 'on-failure
   "When to display the output buffer after a run.
 nil never displays it, t always does, and `on-failure' displays it
-only when at least one test failed."
-  :type '(choice (const nil) (const t) (const on-failure)))
+only when at least one test failed or the runner exited abnormally."
+  :type '(choice
+          (const :tag "Never" nil)
+          (const :tag "After every run" t)
+          (const :tag "Only after failures" on-failure))
+  :package-version '(neotest . "0.1.0"))
 
 (defcustom neotest-save-before-run t
   "Save modified buffers under the project root before running."
-  :type 'boolean)
+  :type 'boolean
+  :package-version '(neotest . "0.1.0"))
 
-(defvar neotest-run-started-hook nil
-  "Hook run with the run plist when a test process starts.")
+(defvar neotest-run-started-functions nil
+  "Abnormal hook called with the run plist when a test process starts.
+Consumers such as `neotest-status-mode' use it to mark known tests as
+running.  Also see `neotest-run-finished-functions'.")
 
-(defvar neotest-result-hook nil
-  "Hook run with RUN and RESULT as each result arrives.")
+(defvar neotest-result-functions nil
+  "Abnormal hook called with RUN and RESULT as each result arrives.
+RESULT is already stored, so `neotest-result' returns it.  Also see
+`neotest-run-finished-functions'.")
 
-(defvar neotest-run-finished-hook nil
-  "Hook run with the run plist when the test process exits.")
+(defvar neotest-run-finished-functions nil
+  "Abnormal hook called with the run plist when the test process exits.
+The run's :status is `finished', `killed' or `error' by then, and
+`neotest-run-results' returns everything it recorded.")
 
 ;;;; Backends
 
@@ -102,7 +116,7 @@ PROPS is a plist with these keys:
 (defun neotest-backend-props (name)
   "Return the props plist of backend NAME."
   (or (alist-get name neotest--backends)
-      (error "Neotest: no backend named %s" name)))
+      (error "Neotest: no backend named `%s'" name)))
 
 (defun neotest--predicate-matches-p (predicate)
   "Return non-nil when PREDICATE matches the current buffer."
@@ -111,7 +125,7 @@ PROPS is a plist with these keys:
    ((symbolp predicate) (derived-mode-p predicate))
    ((stringp predicate) (and buffer-file-name
                              (string-match-p predicate buffer-file-name)))
-   (t (error "Neotest: invalid predicate %S" predicate))))
+   (t (error "Neotest: invalid predicate `%S'" predicate))))
 
 (defun neotest-backend-for-buffer (&optional buffer)
   "Return the name of the backend owning BUFFER, or nil."
@@ -131,7 +145,7 @@ PROPS is a plist with these keys:
 (defun neotest--require-backend ()
   "Return the backend for the current buffer or signal a user error."
   (or (neotest-backend-for-buffer)
-      (user-error "Neotest: no backend for %s" (buffer-name))))
+      (user-error "Neotest: no backend for `%s'" (buffer-name))))
 
 ;;;; Ids and positions
 
@@ -173,7 +187,7 @@ PROPS is a plist with these keys:
 (defun neotest--query (backend file)
   "Return the (LANGUAGE . QUERY) of BACKEND for FILE."
   (let ((query (plist-get (neotest-backend-props backend) :query)))
-    (unless query (user-error "Neotest: backend %s has no :query" backend))
+    (unless query (error "Neotest: backend `%s' has no :query" backend))
     (if (functionp query) (funcall query file) query)))
 
 (defun neotest--name-text (node)
@@ -260,7 +274,7 @@ buffer visiting FILE is used when there is one; otherwise the file is
 parsed in a temporary buffer.  Returns nil when FILE cannot be read."
   (let* ((file (expand-file-name file))
          (backend (or backend (neotest-backend-for-file file)
-                      (user-error "Neotest: no backend for %s" file)))
+                      (user-error "Neotest: no backend for `%s'" file)))
          (query (neotest--query backend file)))
     (cond
      ((find-buffer-visiting file)
@@ -369,7 +383,7 @@ a fallback."
     (unless (plist-get result :type) (plist-put result :type 'test))
     (puthash id result neotest--results)
     (plist-put run :result-ids (cons id (plist-get run :result-ids)))
-    (run-hook-with-args 'neotest-result-hook run result)))
+    (run-hook-with-args 'neotest-result-functions run result)))
 
 ;;;; Runs
 
@@ -377,7 +391,7 @@ a fallback."
   "Return the test files under ROOT accepted by BACKEND."
   (let ((pred (plist-get (neotest-backend-props backend) :test-file-p))
         (project (project-current nil root)))
-    (unless pred (user-error "Neotest: backend %s has no :test-file-p" backend))
+    (unless pred (error "Neotest: backend `%s' has no :test-file-p" backend))
     (seq-filter pred (if project (project-files project) nil))))
 
 (defun neotest--make-run (scope &rest props)
@@ -482,10 +496,10 @@ otherwise they only go to the output buffer."
   (neotest--flush-lines run :partial-stderr)
   (plist-put run :status status)
   (plist-put run :end-time (float-time))
-  (run-hook-with-args 'neotest-run-finished-hook run)
+  (run-hook-with-args 'neotest-run-finished-functions run)
   (let* ((results (neotest-run-results run))
          (failed (length (neotest-run-failed-results run)))
-         (passed (cl-count 'passed results :key (lambda (r) (plist-get r :status))))
+         (passed (seq-count (lambda (r) (eq (plist-get r :status) 'passed)) results))
          (skipped (- (length results) failed passed)))
     (message "neotest: %d passed, %d failed, %d skipped (%s in %.1fs)"
              passed failed skipped status
@@ -518,7 +532,7 @@ otherwise they only go to the output buffer."
          (directory (or (plist-get spec :directory) (plist-get run :root)))
          (parse-stream (or (plist-get spec :parse-stream) 'stdout))
          (process-environment (append (plist-get spec :env) process-environment)))
-    (unless command (user-error "Neotest: backend produced no command"))
+    (unless command (error "Neotest: backend `%s' produced no command" (plist-get run :backend)))
     (plist-put run :command command)
     (plist-put run :directory directory)
     (plist-put run :partial-stdout "")
@@ -533,7 +547,7 @@ otherwise they only go to the output buffer."
              (and buffer-file-name
                   (string-prefix-p root (expand-file-name buffer-file-name)))))))
     (setq neotest--last-run run)
-    (run-hook-with-args 'neotest-run-started-hook run)
+    (run-hook-with-args 'neotest-run-started-functions run)
     (condition-case err
         (neotest--spawn run command directory parse-stream)
       (error
@@ -542,28 +556,28 @@ otherwise they only go to the output buffer."
        (signal (car err) (cdr err))))))
 
 (defun neotest--spawn (run command directory parse-stream)
-  "Start COMMAND in DIRECTORY for RUN, parsing PARSE-STREAM."
-  (progn
-    (let* ((default-directory directory)
-           (stderr (make-pipe-process
-                    :name "neotest-stderr"
-                    :noquery t
-                    :filter (neotest--make-filter run :partial-stderr
-                                                  (eq parse-stream 'stderr))
-                    :sentinel #'ignore))
-           (process (make-process
-                     :name "neotest"
-                     :command command
-                     :noquery t
-                     :connection-type 'pipe
-                     :stderr stderr
-                     :filter (neotest--make-filter run :partial-stdout
-                                                   (eq parse-stream 'stdout))
-                     :sentinel (neotest--sentinel run))))
-      (plist-put run :process process)
-      (plist-put run :stderr-process stderr)
-      (message "neotest: %s" (string-join command " "))
-      run)))
+  "Start COMMAND in DIRECTORY for RUN, parsing PARSE-STREAM.
+Stderr gets its own pipe process so the two streams never interleave."
+  (let* ((default-directory directory)
+         (process-adaptive-read-buffering nil)
+         (stderr (make-pipe-process
+                  :name "neotest-stderr"
+                  :noquery t
+                  :filter (neotest--make-filter run :partial-stderr
+                                                (eq parse-stream 'stderr))
+                  :sentinel #'ignore))
+         (process (make-process
+                   :name "neotest"
+                   :command command
+                   :noquery t
+                   :connection-type 'pipe
+                   :stderr stderr
+                   :filter (neotest--make-filter run :partial-stdout
+                                                 (eq parse-stream 'stdout))
+                   :sentinel (neotest--sentinel run))))
+    (plist-put run :process process)
+    (plist-put run :stderr-process stderr)
+    run))
 
 (defun neotest-run (scope &rest props)
   "Run tests for SCOPE in the current buffer's backend.
@@ -576,6 +590,18 @@ are merged into the run plist; `test' and `namespace' expect
       (plist-put run :files (neotest--project-test-files
                              (plist-get run :backend) (plist-get run :root))))
     (neotest--start run)))
+
+(defun neotest--restart (run &rest props)
+  "Start a fresh copy of RUN with PROPS merged in.
+Recorded results, backend state and the position index are dropped so
+the copy behaves like a first run."
+  (neotest-kill)
+  (let ((copy (copy-sequence run)))
+    (dolist (key '(:result-ids :state :index))
+      (plist-put copy key nil))
+    (while props
+      (plist-put copy (pop props) (pop props)))
+    (neotest--start copy)))
 
 ;;;; Commands
 
@@ -604,13 +630,8 @@ are merged into the run plist; `test' and `namespace' expect
 (defun neotest-rerun-last ()
   "Run the previous run again."
   (interactive)
-  (let ((last (or neotest--last-run (user-error "Neotest: nothing to rerun"))))
-    (neotest-kill)
-    (let ((run (copy-sequence last)))
-      (plist-put run :result-ids nil)
-      (plist-put run :state nil)
-      (plist-put run :index nil)
-      (neotest--start run))))
+  (neotest--restart
+   (or neotest--last-run (user-error "Neotest: nothing to rerun"))))
 
 ;;;###autoload
 (defun neotest-rerun-failed ()
@@ -620,14 +641,7 @@ are merged into the run plist; `test' and `namespace' expect
          (failed (seq-filter (lambda (r) (eq (plist-get r :type) 'test))
                              (neotest-run-failed-results last))))
     (unless failed (user-error "Neotest: no failed tests in last run"))
-    (neotest-kill)
-    (let ((run (copy-sequence last)))
-      (plist-put run :scope 'results)
-      (plist-put run :results failed)
-      (plist-put run :result-ids nil)
-      (plist-put run :state nil)
-      (plist-put run :index nil)
-      (neotest--start run))))
+    (neotest--restart last :scope 'results :results failed)))
 
 ;;;###autoload
 (defun neotest-kill ()
@@ -648,8 +662,10 @@ are merged into the run plist; `test' and `namespace' expect
       (pop-to-buffer buffer)
     (user-error "Neotest: no output yet")))
 
-(defvar-keymap neotest-command-map
-  :doc "Keymap for neotest commands; bind it to a prefix."
+(defvar-keymap neotest-prefix-map
+  :doc "Keymap for neotest commands.
+Neotest binds no global keys.  Bind this map to a prefix of your own,
+for example (keymap-global-set \"C-c t\" neotest-prefix-map)."
   "t" #'neotest-run-at-point
   "f" #'neotest-run-file
   "p" #'neotest-run-project
