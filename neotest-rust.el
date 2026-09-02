@@ -18,7 +18,8 @@
 ;; libtest names tests by module path (`scanner::tests::adds') and never
 ;; mentions files or lines.  The backend maps each name to a position
 ;; from core's index of the run's files, which gives the id; core then
-;; fills line and column from the same position.
+;; fills line and column from the same position.  Doc tests have no
+;; position, since discovery does not read doc comments, and are dropped.
 
 ;;; Code:
 
@@ -118,7 +119,7 @@ and may select more tests than asked for."
             ('file (let ((prefix (neotest-rust-module-prefix (plist-get run :file) root)))
                      (and (not (string-empty-p prefix)) (list prefix)))))))
     (plist-put run :state (list :index index))
-    (list :command (append (list neotest-rust-cargo-executable "test" "-q")
+    (list :command (append (list neotest-rust-cargo-executable "test" "-q" "--no-fail-fast")
                            neotest-rust-cargo-args
                            (list "--")
                            filters
@@ -162,6 +163,11 @@ Paths in STDOUT are relative to RUN's directory."
               (list :message (or (and stdout (string-trim stdout)) "test failed")
                     :location (neotest-rust--panic-location stdout run file))))))
 
+(defun neotest-rust--doctest-p (name)
+  "Return non-nil when libtest NAME denotes a doc test.
+Doc tests are named `PATH - ITEM (line N)' by rustdoc."
+  (string-match-p "\\` *[^ ]+ - .*(line [0-9]+)\\'" name))
+
 (defun neotest-rust--parse-line (run line)
   "Parse one libtest JSON LINE from RUN into a result or nil.
 Other stdout lines go to the output buffer."
@@ -172,7 +178,8 @@ Other stdout lines go to the output buffer."
                          (json-parse-string line :object-type 'alist
                                             :null-object nil :false-object nil))))
       (when (and (equal (alist-get 'type event) "test")
-                 (member (alist-get 'event event) '("ok" "failed" "ignored")))
+                 (member (alist-get 'event event) '("ok" "failed" "ignored"))
+                 (not (neotest-rust--doctest-p (alist-get 'name event))))
         (neotest-rust--result run event)))))
 
 (neotest-register-backend 'rust

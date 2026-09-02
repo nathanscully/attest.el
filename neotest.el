@@ -178,13 +178,25 @@ PROPS is a plist with these keys:
     (unless query (error "Neotest: backend `%s' has no :query" backend))
     (if (functionp query) (funcall query file) query)))
 
+(defun neotest--unescape (text)
+  "Return the character sequence the escape TEXT stands for.
+Backslash escapes in JavaScript and Python string literals are close
+enough to Lisp's that the Lisp reader decodes them; TEXT is returned
+as is when it cannot."
+  (condition-case nil
+      (car (read-from-string (concat "\"" text "\"")))
+    (error text)))
+
 (defun neotest--name-text (node)
   "Return the test name expressed by NODE.
-String literals lose their quotes; template strings are concatenated;
-anything else is returned as source text."
+String literals lose their quotes and decode their escapes; template
+strings are concatenated; anything else is returned as source text."
   (pcase (treesit-node-type node)
     ("string"
-     (mapconcat (lambda (child) (treesit-node-text child t))
+     (mapconcat (lambda (child)
+                  (if (equal (treesit-node-type child) "escape_sequence")
+                      (neotest--unescape (treesit-node-text child t))
+                    (treesit-node-text child t)))
                 (treesit-filter-child
                  node (lambda (child)
                         (member (treesit-node-type child)
@@ -378,11 +390,16 @@ a fallback."
 ;;;; Runs
 
 (defun neotest--project-test-files (backend root)
-  "Return the test files under ROOT accepted by BACKEND."
+  "Return the test files under ROOT accepted by BACKEND.
+ROOT is the backend's root, which can be a package inside a larger
+`project-current' checkout; files outside ROOT are dropped."
   (let ((pred (plist-get (neotest-backend-props backend) :test-file-p))
         (project (project-current nil root)))
     (unless pred (error "Neotest: backend `%s' has no :test-file-p" backend))
-    (seq-filter pred (if project (project-files project) nil))))
+    (seq-filter (lambda (file)
+                  (and (string-prefix-p root (expand-file-name file))
+                       (funcall pred file)))
+                (if project (project-files project) nil))))
 
 (defun neotest--make-run (scope &rest props)
   "Build a run plist for SCOPE from the current buffer, merging PROPS."

@@ -63,6 +63,14 @@
       (should (equal (plist-get fail :location) '(19 . 9)))
       (should (string-match-p "x should be three" (plist-get fail :message))))))
 
+(ert-deftest neotest-rust-drops-doc-tests ()
+  (let ((run (list :backend 'rust :scope 'file :state (list :index (make-hash-table :test 'equal))
+                   :root neotest-rust-test--root :file neotest-rust-test--lib)))
+    (should-not (neotest-rust--parse-line
+                 run "{\"type\":\"test\",\"event\":\"ok\",\"name\":\"src/lib.rs - add (line 7)\"}"))
+    (should (neotest-rust--parse-line
+             run "{\"type\":\"test\",\"event\":\"ok\",\"name\":\"tests::adds\"}"))))
+
 (ert-deftest neotest-rust-command-for-scopes ()
   (skip-unless (treesit-language-available-p 'rust))
   (let* ((base (list :backend 'rust :root neotest-rust-test--root :file neotest-rust-test--scanner))

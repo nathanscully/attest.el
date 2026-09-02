@@ -69,11 +69,12 @@
 (ert-deftest neotest-discovery-name-text-handles-quotes-and-templates ()
   (skip-unless (treesit-language-available-p 'typescript))
   (with-temp-buffer
-    (insert "test('single', () => {});\ntest(`tpl ${x}`, () => {});\ntest(name, () => {});\n")
+    (insert "test('single', () => {});\ntest(`tpl ${x}`, () => {});\ntest(name, () => {});\n"
+            "test(\"back\\\\slash \\\"quoted\\\" \\u0041 tab\\tend\", () => {});\n")
     (setq buffer-file-name "/tmp/x.test.ts")
     (typescript-ts-mode)
     (should (equal (mapcar (lambda (p) (plist-get p :name)) (neotest-positions))
-                   '("single" "tpl ${x}" "name")))))
+                   '("single" "tpl ${x}" "name" "back\\slash \"quoted\" A tab\tend")))))
 
 (ert-deftest neotest-discovery-file-positions-without-a-buffer ()
   (skip-unless (treesit-language-available-p 'typescript))
