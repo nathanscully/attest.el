@@ -57,14 +57,20 @@
               (let ((region (neotest-flymake--region result)))
                 (flymake-make-diagnostic (current-buffer) (car region) (cdr region)
                                          :error
-                                         (list "neotest" nil
-                                               (neotest-flymake--message result))
+                                         (neotest-flymake--message result)
                                          result)))
             (neotest-flymake--failures buffer-file-name))))
 
+(defvar neotest-flymake--clearing nil
+  "Non-nil while the backend must report no diagnostics.
+Bound when the mode turns off, so flymake drops this backend's
+diagnostics before the hook is removed; Emacs 30 keeps the
+diagnostics of a backend that merely stops running.")
+
 (defun neotest-flymake-backend (report-fn &rest _args)
   "Report the current buffer's failed tests to REPORT-FN."
-  (funcall report-fn (neotest-flymake--buffer-diagnostics)))
+  (funcall report-fn (unless neotest-flymake--clearing
+                       (neotest-flymake--buffer-diagnostics))))
 
 (defun neotest-flymake--list-only-diagnostic (result)
   "Return a file-locus diagnostic for RESULT, for unvisited files."
@@ -74,7 +80,7 @@
                                    (cdr location))
                              nil
                              :error
-                             (list "neotest" nil (neotest-flymake--message result))
+                             (neotest-flymake--message result)
                              result)))
 
 (defun neotest-flymake--refresh (run)
@@ -100,8 +106,9 @@
         (add-hook 'flymake-diagnostic-functions #'neotest-flymake-backend nil t)
         (add-hook 'neotest-run-finished-functions #'neotest-flymake--refresh)
         (when flymake-mode (flymake-start nil t)))
-    (remove-hook 'flymake-diagnostic-functions #'neotest-flymake-backend t)
-    (when flymake-mode (flymake-start nil t))))
+    (let ((neotest-flymake--clearing t))
+      (when flymake-mode (flymake-start nil t)))
+    (remove-hook 'flymake-diagnostic-functions #'neotest-flymake-backend t)))
 
 (defun neotest-flymake--maybe-enable ()
   "Enable `neotest-flymake-mode' when a backend owns the buffer."

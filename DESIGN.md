@@ -98,7 +98,7 @@ Consumers subscribe to three hooks and read the shared cache
 |---|---|---|
 | run process, stream two outputs | `make-process` with `:stderr` pipe process | neotest.el |
 | raw output with file:line jumps | `compilation-minor-mode`, one extra `compilation-error-regexp-alist` entry for `file://` URLs | neotest.el |
-| test discovery | `treesit-query-capture` with `GROUPED`, `treesit-ensure-installed` | neotest.el |
+| test discovery | `treesit-query-capture`; names paired with their innermost definition capture, so Emacs 30 works | neotest.el |
 | inline failures | `flymake-diagnostic-functions`, `flymake-make-diagnostic` | neotest-flymake.el |
 | failures in unvisited files | `flymake-list-only-diagnostics` (read by `flymake-show-project-diagnostics`) | neotest-flymake.el |
 | gutter status | `define-fringe-bitmap` + overlay `before-string` | neotest-status.el |

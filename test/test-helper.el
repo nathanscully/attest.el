@@ -23,10 +23,14 @@
   (expand-file-name name neotest-test-fixtures))
 
 (defun neotest-test-fixture-lines (name)
-  "Return the lines of fixture NAME."
+  "Return the lines of fixture NAME.
+The placeholder __FIXTURES__/ in a recorded line stands for the
+fixtures directory, so replayed events carry this checkout's paths."
   (with-temp-buffer
     (insert-file-contents (neotest-test-fixture name))
-    (split-string (buffer-string) "\n" t)))
+    (split-string (string-replace "__FIXTURES__/" neotest-test-fixtures
+                                  (buffer-string))
+                  "\n" t)))
 
 (defmacro neotest-test-with-run (var &rest body)
   "Bind VAR to a fresh node run plist and evaluate BODY."
