@@ -208,23 +208,64 @@ strings are concatenated; anything else is returned as source text."
                 ""))
     (_ (treesit-node-text node t))))
 
-(defun neotest--match-position (match file)
-  "Return an unlinked position plist for MATCH in FILE, or nil.
-MATCH is one grouped result of `treesit-query-capture'."
-  (let* ((kind (cond ((alist-get 'test.definition match) 'test)
-                     ((alist-get 'namespace.definition match) 'namespace)))
-         (definition (and kind (alist-get (intern (format "%s.definition" kind)) match)))
-         (name-node (and kind (alist-get (intern (format "%s.name" kind)) match))))
-    (when (and definition name-node)
-      (list :type kind
-            :name (neotest--name-text name-node)
-            :file file
-            :line (line-number-at-pos (treesit-node-start definition) t)
-            :column (1+ (save-excursion
-                          (goto-char (treesit-node-start definition))
-                          (current-column)))
-            :beg (treesit-node-start definition)
-            :end (treesit-node-end definition)))))
+(defun neotest--node-position (kind definition name file)
+  "Return an unlinked position plist of KIND for DEFINITION in FILE.
+NAME is the node holding the test's name."
+  (list :type kind
+        :name (neotest--name-text name)
+        :file file
+        :line (line-number-at-pos (treesit-node-start definition) t)
+        :column (1+ (save-excursion
+                      (goto-char (treesit-node-start definition))
+                      (current-column)))
+        :beg (treesit-node-start definition)
+        :end (treesit-node-end definition)))
+
+(defun neotest--capture-entry (name node)
+  "Return the pairing-sweep entry for capture NAME on NODE, or nil.
+Only the definition and name captures participate in pairing;
+auxiliary captures used by query predicates are dropped."
+  (when-let* ((kind (cond ((memq name '(test.definition test.name)) 'test)
+                          ((memq name '(namespace.definition namespace.name)) 'namespace))))
+    (list (treesit-node-start node) (treesit-node-end node) kind
+          (if (memq name '(test.definition namespace.definition)) 'definition 'name)
+          node)))
+
+(defun neotest--capture-entry< (a b)
+  "Return non-nil when capture entry A sorts before B in the sweep.
+Entries order by start position; at the same start a definition
+precedes a name and a wider node precedes a narrower one."
+  (cond ((/= (nth 0 a) (nth 0 b)) (< (nth 0 a) (nth 0 b)))
+        ((not (eq (nth 3 a) (nth 3 b))) (eq (nth 3 a) 'definition))
+        (t (> (nth 1 a) (nth 1 b)))))
+
+(defun neotest--capture-positions (captures file)
+  "Return unlinked position plists for CAPTURES in FILE.
+CAPTURES is the flat list `treesit-query-capture' returns.  A
+position pairs each name capture with the innermost definition
+capture of the same kind whose range contains it, so discovery does
+not depend on the grouped results Emacs 31 added.  Overlapping
+patterns can capture one node several times; duplicate entries
+collapse into a single position."
+  (let ((entries nil)
+        (positions nil)
+        (previous nil)
+        (stacks (list (cons 'test nil) (cons 'namespace nil))))
+    (pcase-dolist (`(,name . ,node) captures)
+      (when-let* ((entry (neotest--capture-entry name node)))
+        (push entry entries)))
+    (dolist (entry (sort (nreverse entries) #'neotest--capture-entry<))
+      (unless (equal (take 4 entry) (and previous (take 4 previous)))
+        (pcase-let* ((`(,beg ,_end ,kind ,role ,node) entry)
+                     (stack (assq kind stacks)))
+          (while (and (cdr stack) (<= (treesit-node-end (cadr stack)) beg))
+            (setcdr stack (cddr stack)))
+          (if (eq role 'definition)
+              (setcdr stack (cons node (cdr stack)))
+            (when (cdr stack)
+              (push (neotest--node-position kind (cadr stack) node file) positions)))))
+      (setq previous entry))
+    (nreverse positions)))
 
 (defun neotest--link-positions (positions file)
   "Assign :parent-id and :id to POSITIONS from FILE by range containment.
@@ -249,9 +290,8 @@ POSITIONS must be sorted by :beg ascending."
 FILE names the buffer's file in the resulting ids."
   (neotest--ensure-language language)
   (let* ((root (treesit-parser-root-node (treesit-parser-create language)))
-         (matches (treesit-query-capture root query nil nil nil t))
-         (positions (delq nil (mapcar (lambda (m) (neotest--match-position m file))
-                                      matches))))
+         (positions (neotest--capture-positions
+                     (treesit-query-capture root query) file)))
     (neotest--link-positions
      (sort positions (lambda (a b) (< (plist-get a :beg) (plist-get b :beg))))
      file)))

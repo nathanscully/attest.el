@@ -3,13 +3,16 @@
 ;;; Commentary:
 
 ;; Runs checkdoc over the files named on the command line and exits
-;; non-zero when any produced a diagnostic.
+;; non-zero when any produced a diagnostic.  The experimental verb
+;; check is off: it flags nouns such as "tests", and its default
+;; differs between Emacs versions.
 
 ;;; Code:
 
 (require 'checkdoc)
 
-(let ((checkdoc-diagnostic-buffer "*neotest-checkdoc*"))
+(let ((checkdoc-diagnostic-buffer "*neotest-checkdoc*")
+      (checkdoc-verb-check-experimental-flag nil))
   (dolist (file command-line-args-left)
     (checkdoc-file file))
   (let ((text (mapconcat (lambda (name)
