@@ -1,0 +1,5 @@
+{
+  "name": "neotest-stress-node",
+  "private": true,
+  "type": "module"
+}

@@ -47,9 +47,26 @@
 (defconst neotest-pytest--query
   '(((class_definition name: (identifier) @namespace.name) @namespace.definition
      (:match "\\`Test" @namespace.name))
-    ((function_definition name: (identifier) @test.name) @test.definition
+    ((module (function_definition name: (identifier) @test.name) @test.definition)
+     (:match "\\`test" @test.name))
+    ((module (decorated_definition
+              (function_definition name: (identifier) @test.name) @test.definition))
+     (:match "\\`test" @test.name))
+    ((class_definition
+      name: (identifier) @class
+      body: (block (function_definition name: (identifier) @test.name) @test.definition))
+     (:match "\\`Test" @class)
+     (:match "\\`test" @test.name))
+    ((class_definition
+      name: (identifier) @class
+      body: (block (decorated_definition
+                    (function_definition name: (identifier) @test.name) @test.definition)))
+     (:match "\\`Test" @class)
      (:match "\\`test" @test.name)))
-  "Query matching pytest test classes and functions.")
+  "Query matching pytest test classes and the functions pytest collects.
+A test function is either at module level or directly inside a class
+whose name starts with Test, so helpers nested in other functions or in
+plain classes are not tests.")
 
 (defun neotest-pytest-root (file)
   "Return the directory of the nearest pytest configuration above FILE."
