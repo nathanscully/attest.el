@@ -26,6 +26,7 @@ Read in this order before changing anything:
 | `neotest-flymake.el`, `neotest-status.el`, `neotest-list.el` | consumers; subscribe to hooks, read `neotest--results` |
 | `test/` | ert tests; parser tests replay `test/fixtures/*-events.jsonl`, one integration test per runner |
 | `stress/` | one real project per runner (`node`, `vitest`, `cargo`, `pytest`); `test/neotest-stress-test.el` runs them via `make stress` |
+| `flake.nix` | dev shell and `nix flake check`; pins Emacs, grammars and runners |
 | `assets/live-tlox.png` | screenshot of a live run in the daemon |
 | `scratch/` | gitignored working notes (`PLAN.md`) |
 
@@ -35,6 +36,9 @@ Read in this order before changing anything:
 make all          # byte-compile (warnings are errors), checkdoc, ert
 make test         # ert only
 make stress       # live runs against stress/; not part of make all
+
+nix develop -c make all   # same, with the flake's pinned toolchain
+nix flake check           # make all on a clean Emacs in the nix sandbox
 ```
 
 The stress suite spawns every runner against the projects under
@@ -49,7 +53,18 @@ declared `:expected-result :failed` and flip when that gap closes. Add
 a new edge case as a committed file, never a generator. `stress/vitest`
 needs `pnpm install` once.
 
-Requirements on the machine:
+The flake pins the whole toolchain: Emacs 30 with the five grammars
+(exported as `EMACS_TREE_SITTER_GRAMMARS`), node, cargo, pytest and
+pnpm. `nix flake check` runs `make all` in the build sandbox against
+that clean Emacs, so it catches host assumptions the daemon hides.
+The sandbox cannot fetch node_modules, so the vitest integration test
+skips there; run the suite in the dev shell for vitest coverage.
+CI (`.github/workflows/ci.yml`) runs `nix flake check` on Linux and
+macOS and `make all stress` in the dev shell; setting the
+`CACHIX_CACHE` repo variable and `CACHIX_AUTH_TOKEN` secret turns on
+cachix, and without them the cachix steps are skipped.
+
+Requirements on the machine (`nix develop` provides all of it):
 
 - Emacs 30+ with tree-sitter. Grammars for `typescript`, `tsx`,
   `javascript`, `rust`, `python`. Set `EMACS_TREE_SITTER_GRAMMARS` to
@@ -60,8 +75,9 @@ Requirements on the machine:
   absent), `pnpm install` in `test/fixtures/vitest` for the vitest
   integration test (skipped if `node_modules/.bin/vitest` is absent).
 
-On this machine pytest is not on PATH. Run `make all` and `make stress`
-as `nix shell nixpkgs#python3Packages.pytest -c make ...`, prefix PATH
+On this machine pytest is not on PATH; `nix develop -c make all` is
+the simplest fix. Outside the dev shell, run make as
+`nix shell nixpkgs#python3Packages.pytest -c make ...`, prefix PATH
 with a venv's bin, or point `neotest-pytest-command` at a venv.
 
 If `NODE_OPTIONS` is set in your shell it can break `node --test`;
@@ -81,12 +97,17 @@ use `env -u NODE_OPTIONS node ...` when testing by hand.
   target from its `:type`.
 - Consumers subscribe to the abnormal hooks `neotest-run-started-functions`,
   `neotest-result-functions` and `neotest-run-finished-functions`.
+- Support Emacs 30 and 31. Avoid 31-only calls (grouped
+  `treesit-query-capture`, flymake list messages); checkdoc runs with
+  the experimental verb check off so both versions agree.
 - Parser tests run on recorded fixtures, never on a live process. Keep
   one integration test per runner that spawns the real thing and
   `skip-unless` it is installed.
 - Record a fixture by running the runner with the bundled reporter and
   saving the structured stream, for example
-  `node --test --test-reporter=./neotest-node-reporter.mjs --test-reporter-destination=stdout file.test.ts`.
+  `node --test --test-reporter=./neotest-node-reporter.mjs --test-reporter-destination=stdout file.test.ts`,
+  then replace the absolute fixtures directory in the events with
+  `__FIXTURES__/`; `neotest-test-fixture-lines` substitutes it back.
 
 ## Verifying in a live Emacs
 
