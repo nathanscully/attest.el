@@ -51,3 +51,7 @@ vitest when available and skip otherwise; `pnpm install` in
 
 See `DESIGN.md` for the backend contract and `ASSESSMENT.md` for what
 works and what does not.
+
+## License
+
+GPL-3.0-or-later. See `LICENSE`.
