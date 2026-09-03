@@ -1,16 +1,16 @@
-;;; neotest-list.el --- Tabulated results view for neotest -*- lexical-binding: t; -*-
+;;; attest-list.el --- Tabulated results view for attest -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2026 Nathan Scully
 
 ;; Author: Nathan Scully
 ;; Maintainer: Nathan Scully
-;; URL: https://github.com/nathanscully/emacs-neotest
+;; URL: https://github.com/nathanscully/attest.el
 
 ;; This file is not part of GNU Emacs.
 
 ;;; Commentary:
 
-;; `neotest-list' shows the results of the last run in a
+;; `attest-list' shows the results of the last run in a
 ;; `tabulated-list-mode' buffer.  RET visits the failing line, `o'
 ;; shows the failure message, `f' toggles failures-only, `x' reruns the
 ;; failed tests and `r' reruns everything.
@@ -18,18 +18,18 @@
 ;;; Code:
 
 (require 'tabulated-list)
-(require 'neotest)
+(require 'attest)
 
-(defcustom neotest-list-buffer-name "*neotest results*"
+(defcustom attest-list-buffer-name "*attest results*"
   "Name of the buffer showing the results of the last run."
   :type 'string
-  :group 'neotest
-  :package-version '(neotest . "0.1.0"))
+  :group 'attest
+  :package-version '(attest . "0.1.0"))
 
-(defvar-local neotest-list--failures-only nil
+(defvar-local attest-list--failures-only nil
   "Non-nil when only failed results are listed.")
 
-(defun neotest-list--status-string (status)
+(defun attest-list--status-string (status)
   "Return STATUS as a propertized column string."
   (propertize (symbol-name status)
               'face (pcase status
@@ -37,38 +37,38 @@
                       ('failed 'error)
                       (_ 'shadow))))
 
-(defun neotest-list--entry (result)
+(defun attest-list--entry (result)
   "Return the tabulated-list entry for RESULT."
   (let* ((location (plist-get result :location))
          (line (or (car location) (plist-get result :line))))
     (list result
-          (vector (neotest-list--status-string (plist-get result :status))
+          (vector (attest-list--status-string (plist-get result :status))
                   (if-let* ((ms (plist-get result :duration)))
                       (format "%.1fms" ms)
                     "")
-                  (string-join (neotest-id-names (plist-get result :id)) " > ")
+                  (string-join (attest-id-names (plist-get result :id)) " > ")
                   (format "%s:%s"
                           (file-name-nondirectory (plist-get result :file))
                           line)))))
 
-(defun neotest-list--entries ()
+(defun attest-list--entries ()
   "Return the entries for the last run, honouring the failure filter."
-  (when-let* ((run (neotest-last-run)))
-    (mapcar #'neotest-list--entry
+  (when-let* ((run (attest-last-run)))
+    (mapcar #'attest-list--entry
             (seq-filter (lambda (r)
                           (and (eq (plist-get r :type) 'test)
-                               (or (not neotest-list--failures-only)
+                               (or (not attest-list--failures-only)
                                    (eq (plist-get r :status) 'failed))))
-                        (neotest-run-results run)))))
+                        (attest-run-results run)))))
 
-(defun neotest-list--result-at-point ()
+(defun attest-list--result-at-point ()
   "Return the result on the current line or signal a user error."
   (or (tabulated-list-get-id) (user-error "No result on this line")))
 
-(defun neotest-list-visit ()
+(defun attest-list-visit ()
   "Visit the failing line, or the test, of the result at point."
   (interactive)
-  (let* ((result (neotest-list--result-at-point))
+  (let* ((result (attest-list--result-at-point))
          (location (plist-get result :location))
          (line (or (car location) (plist-get result :line) 1))
          (column (cdr location)))
@@ -77,53 +77,53 @@
     (forward-line (1- line))
     (when column (move-to-column (1- column)))))
 
-(defun neotest-list-show-message ()
+(defun attest-list-show-message ()
   "Show the failure message of the result at point."
   (interactive)
-  (let ((result (neotest-list--result-at-point)))
+  (let ((result (attest-list--result-at-point)))
     (message "%s" (or (plist-get result :message)
                       (format "%s: %s" (plist-get result :name)
                               (plist-get result :status))))))
 
-(defun neotest-list-toggle-failures ()
+(defun attest-list-toggle-failures ()
   "Toggle between listing every result and failed results only."
   (interactive)
-  (setq neotest-list--failures-only (not neotest-list--failures-only))
+  (setq attest-list--failures-only (not attest-list--failures-only))
   (tabulated-list-revert))
 
-(defvar-keymap neotest-list-mode-map
+(defvar-keymap attest-list-mode-map
   :parent tabulated-list-mode-map
-  "RET" #'neotest-list-visit
-  "o" #'neotest-list-show-message
-  "f" #'neotest-list-toggle-failures
-  "x" #'neotest-rerun-failed
-  "r" #'neotest-rerun-last)
+  "RET" #'attest-list-visit
+  "o" #'attest-list-show-message
+  "f" #'attest-list-toggle-failures
+  "x" #'attest-rerun-failed
+  "r" #'attest-rerun-last)
 
-(define-derived-mode neotest-list-mode tabulated-list-mode "neotest"
-  "Major mode listing the results of the last neotest run."
+(define-derived-mode attest-list-mode tabulated-list-mode "attest"
+  "Major mode listing the results of the last attest run."
   (setq tabulated-list-format
         [("Status" 8 t) ("Time" 9 nil) ("Test" 50 t) ("Location" 24 t)])
   (setq tabulated-list-padding 1)
-  (setq tabulated-list-entries #'neotest-list--entries)
+  (setq tabulated-list-entries #'attest-list--entries)
   (tabulated-list-init-header))
 
-(defun neotest-list--refresh (_run)
+(defun attest-list--refresh (_run)
   "Redraw the results buffer after a run, if it is live."
-  (when-let* ((buffer (get-buffer neotest-list-buffer-name)))
+  (when-let* ((buffer (get-buffer attest-list-buffer-name)))
     (with-current-buffer buffer
       (tabulated-list-revert))))
 
 ;;;###autoload
-(defun neotest-list ()
+(defun attest-list ()
   "Show the results of the last run."
   (interactive)
-  (let ((buffer (get-buffer-create neotest-list-buffer-name)))
+  (let ((buffer (get-buffer-create attest-list-buffer-name)))
     (with-current-buffer buffer
-      (unless (derived-mode-p 'neotest-list-mode)
-        (neotest-list-mode))
-      (add-hook 'neotest-run-finished-functions #'neotest-list--refresh)
+      (unless (derived-mode-p 'attest-list-mode)
+        (attest-list-mode))
+      (add-hook 'attest-run-finished-functions #'attest-list--refresh)
       (tabulated-list-revert))
     (pop-to-buffer buffer)))
 
-(provide 'neotest-list)
-;;; neotest-list.el ends here
+(provide 'attest-list)
+;;; attest-list.el ends here

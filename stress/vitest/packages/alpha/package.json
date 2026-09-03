@@ -1,5 +1,5 @@
 {
-  "name": "@neotest-stress/alpha",
+  "name": "@attest-stress/alpha",
   "private": true,
   "type": "module",
   "devDependencies": {

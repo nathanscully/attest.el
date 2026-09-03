@@ -13,10 +13,10 @@ through flymake and lists them in `tabulated-list-mode`. It loads with
   `test/fixtures/demo.test.ts`, waits for the sentinel and checks nine
   streamed results and the failing frame `(10 . 5)`.
 - Live in the user's Emacs daemon on `tlox/src/scanner.test.ts`:
-  `neotest-run-file` produced one failed result, a flymake `:error`
-  from `neotest-flymake-backend` at line 8 column 2 (the assertion, not
+  `attest-run-file` produced one failed result, a flymake `:error`
+  from `attest-flymake-backend` at line 8 column 2 (the assertion, not
   the `test(` line), a red fringe dot at line 5, and the results table.
-  `neotest-run-at-point` built
+  `attest-run-at-point` built
   `--test-name-pattern=^scan splits tokens with line numbers$`.
   Screenshot: `assets/live-tlox.png`.
 - Discovery timing: 1000 synthetic files, 29 000 positions, 11.72 s
@@ -52,7 +52,7 @@ What each backend taught:
   takes the line from the position, the marker lands on the `def`.
   Skips surface in the `setup` phase.
 
-Live in the daemon: vitest `neotest-run-at-point` on
+Live in the daemon: vitest `attest-run-at-point` on
 `poly/packages/core/src/dispatch.test.ts` ran one test in
 `packages/core` with `-t "^dispatch loop runs handlers …$"`; cargo on the
 fixture crate placed the flymake error at `src/lib.rs:19:9`; pytest on
@@ -70,7 +70,7 @@ modes (Elixir, HEEx, Lua, PHP, `treesit-x`) have no classic version.
 The qualifier: `treesit-enabled-modes` still defaults to `nil`, and
 auto-install needs a C compiler and git.
 
-What it bought: `:positions` and `neotest-treesit.el` are gone, core
+What it bought: `:positions` and `attest-treesit.el` are gone, core
 indexes positions per run and fills `:line`, `:column` and `:type` on
 every result, the rust backend lost 24 lines and its private index,
 and pytest's decorator-line drift disappeared because the position
@@ -94,11 +94,11 @@ run.
    a 1000-file repo freezes for 12 s if parsed synchronously. Two
    built-in ways out, neither built here: an idle timer parsing one file
    per tick (each tick under a frame), or `emacs -Q --batch` as a child
-   process running `neotest-treesit.el` over a file list. The batch
+   process running `attest-treesit.el` over a file list. The batch
    route is proven viable: the ert suite already parses TypeScript in
    batch with the grammar found through `treesit-extra-load-path`.
 4. **The runner needs a shipped file.** The node backend depends on
-   `neotest-node-reporter.mjs`. It is 15 lines and lives in the package,
+   `attest-node-reporter.mjs`. It is 15 lines and lives in the package,
    but it is a file on disk the backend must locate with `load-file-name`.
 5. **`compilation-minor-mode` needed help.** Node prints frames as
    `file:///abs/path.ts:21:9`; no default rule matches the URL form, so
@@ -130,7 +130,7 @@ None of these forced a third-party dependency.
 
 ## Comparison
 
-| | neotest.el | verdict.el | test-cockpit.el |
+| | attest.el | verdict.el | test-cockpit.el |
 |---|---|---|---|
 | deps | none | treemacs, dash | projectile |
 | core size | 661 lines + consumers of 111-129 | 1384 | 719 |
@@ -142,15 +142,15 @@ None of these forced a third-party dependency.
 
 What is different: results flow into flymake, the fringe and
 `next-error`, which the user already has, instead of into a new tree
-widget. A user can run `neotest-run-at-point` with no consumer loaded
+widget. A user can run `attest-run-at-point` with no consumer loaded
 and get compile-style output. That is the reason another package is
 justified, and it is the only reason. If flymake had not worked, the
 right move would have been a node backend for verdict.
 
 ## Risks
 
-- The name `neotest` collides with the Neovim project. Rename before
-  publishing or accept the confusion.
+- Renamed from neotest (September 2026) to avoid colliding with the
+  Neovim project of that name.
 - `flymake-list-only-diagnostics` is a variable other tools may also
   set; entries are keyed by file, so collisions are unlikely but possible.
 - Node's event ordering (`test:complete` before `test:start`) is odd
@@ -162,4 +162,4 @@ right move would have been a node backend for verdict.
 - Chunked discovery over `project-files` behind an idle timer, with the
   timing above as the budget.
 - `test.each` and template-string names: mark positions dynamic and
-  widen the name pattern, as neotest-nodejs does.
+  widen the name pattern, as attest-nodejs does.

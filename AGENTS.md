@@ -1,4 +1,4 @@
-# neotest.el
+# attest.el
 
 Emacs test runner with per-language backends. Core is built-ins only and
 requires an Emacs built with tree-sitter. Four backends: `node --test`,
@@ -11,21 +11,21 @@ Read in this order before changing anything:
    built-in provides each feature, what is deliberately not built.
 2. `ASSESSMENT.md`: what works, where the built-ins thesis strains,
    the tree-sitter decision, comparison with verdict and test-cockpit.
-3. `neotest.el`: the core, 685 lines. Everything else is a backend or a
+3. `attest.el`: the core, 685 lines. Everything else is a backend or a
    consumer of it.
 
 ## Layout
 
 | path | role |
 |---|---|
-| `neotest.el` | registry, ids, discovery + per-run position index, process runner, result cache, commands |
-| `neotest-node.el` + `neotest-node-reporter.mjs` | node:test backend; reporter tracks nesting and emits `neotest:test` events on stderr |
-| `neotest-vitest.el` + `neotest-vitest-reporter.mjs` | vitest backend; same event shape, reuses the node query and parser; registers after node |
-| `neotest-rust.el` | cargo test via libtest JSON (`RUSTC_BOOTSTRAP=1`); maps names through the core index |
-| `neotest-pytest.el` + `neotest_pytest.py` | pytest backend; plugin loaded with `-p`, JSON on stderr |
-| `neotest-flymake.el`, `neotest-status.el`, `neotest-list.el` | consumers; subscribe to hooks, read `neotest--results` |
+| `attest.el` | registry, ids, discovery + per-run position index, process runner, result cache, commands |
+| `attest-node.el` + `attest-node-reporter.mjs` | node:test backend; reporter tracks nesting and emits `attest:test` events on stderr |
+| `attest-vitest.el` + `attest-vitest-reporter.mjs` | vitest backend; same event shape, reuses the node query and parser; registers after node |
+| `attest-rust.el` | cargo test via libtest JSON (`RUSTC_BOOTSTRAP=1`); maps names through the core index |
+| `attest-pytest.el` + `attest_pytest.py` | pytest backend; plugin loaded with `-p`, JSON on stderr |
+| `attest-flymake.el`, `attest-status.el`, `attest-list.el` | consumers; subscribe to hooks, read `attest--results` |
 | `test/` | ert tests; parser tests replay `test/fixtures/*-events.jsonl`, one integration test per runner |
-| `stress/` | one real project per runner (`node`, `vitest`, `cargo`, `pytest`); `test/neotest-stress-test.el` runs them via `make stress` |
+| `stress/` | one real project per runner (`node`, `vitest`, `cargo`, `pytest`); `test/attest-stress-test.el` runs them via `make stress` |
 | `flake.nix` | dev shell and `nix flake check`; pins Emacs, grammars and runners |
 | `assets/live-tlox.png` | screenshot of a live run in the daemon |
 | `scratch/` | gitignored working notes (`PLAN.md`) |
@@ -78,25 +78,25 @@ Requirements on the machine (`nix develop` provides all of it):
 On this machine pytest is not on PATH; `nix develop -c make all` is
 the simplest fix. Outside the dev shell, run make as
 `nix shell nixpkgs#python3Packages.pytest -c make ...`, prefix PATH
-with a venv's bin, or point `neotest-pytest-command` at a venv.
+with a venv's bin, or point `attest-pytest-command` at a venv.
 
 If `NODE_OPTIONS` is set in your shell it can break `node --test`;
 use `env -u NODE_OPTIONS node ...` when testing by hand.
 
 ## Conventions
 
-- `lexical-binding: t`, prefix `neotest-`, private names `neotest--`.
+- `lexical-binding: t`, prefix `attest-`, private names `attest--`.
 - No inline comments; docstrings on every definition; checkdoc clean.
 - No third-party dependencies in core or backends. Built-ins only.
 - Backends never report where a test is. Core fills `:line`, `:column`
-  and `:type` from the discovered position in `neotest--record`.
+  and `:type` from the discovered position in `attest--record`.
 - Ids are `FILE::name::name`. Discovery and the runner must agree; every
   backend has a test asserting the id sets match.
 - Run scopes are `file`, `project` and `targets`. Run-at-point and
   rerun-failed are both `targets` runs; backends build one selector per
   target from its `:type`.
-- Consumers subscribe to the abnormal hooks `neotest-run-started-functions`,
-  `neotest-result-functions` and `neotest-run-finished-functions`.
+- Consumers subscribe to the abnormal hooks `attest-run-started-functions`,
+  `attest-result-functions` and `attest-run-finished-functions`.
 - Support Emacs 30 and 31. Avoid 31-only calls (grouped
   `treesit-query-capture`, flymake list messages); checkdoc runs with
   the experimental verb check off so both versions agree.
@@ -105,9 +105,9 @@ use `env -u NODE_OPTIONS node ...` when testing by hand.
   `skip-unless` it is installed.
 - Record a fixture by running the runner with the bundled reporter and
   saving the structured stream, for example
-  `node --test --test-reporter=./neotest-node-reporter.mjs --test-reporter-destination=stdout file.test.ts`,
+  `node --test --test-reporter=./attest-node-reporter.mjs --test-reporter-destination=stdout file.test.ts`,
   then replace the absolute fixtures directory in the events with
-  `__FIXTURES__/`; `neotest-test-fixture-lines` substitutes it back.
+  `__FIXTURES__/`; `attest-test-fixture-lines` substitutes it back.
 
 ## Verifying in a live Emacs
 
@@ -116,25 +116,24 @@ the files from this directory, disable side effects, run, inspect:
 
 ```elisp
 (progn
-  (dolist (f '("neotest" "neotest-node" "neotest-flymake" "neotest-status" "neotest-list"))
-    (load (expand-file-name (concat f ".el") "~/projects/emacs-neotest/") nil t))
-  (setq neotest-save-before-run nil neotest-display-output nil))
+  (dolist (f '("attest" "attest-node" "attest-flymake" "attest-status" "attest-list"))
+    (load (expand-file-name (concat f ".el") "~/projects/attest.el/") nil t))
+  (setq attest-save-before-run nil attest-display-output nil))
 ```
 
-Then in a test buffer `(neotest-run-at-point)` and, after it finishes,
-`(neotest-run-results (neotest-last-run))`, `(flymake-diagnostics)` and
-the overlays with property `neotest-status`. Do not call `pop-to-buffer`
+Then in a test buffer `(attest-run-at-point)` and, after it finishes,
+`(attest-run-results (attest-last-run))`, `(flymake-diagnostics)` and
+the overlays with property `attest-status`. Do not call `pop-to-buffer`
 inside the same form you inspect from; it changes the current buffer.
 
 ## Known limits
 
 - Rust project scope parses every `src/` and `tests/` file synchronously
   before cargo starts (6.0 ms per file measured on `stress/cargo`).
-- vitest reports `-t`-excluded tests as skipped; `neotest-vitest--wanted-p`
+- vitest reports `-t`-excluded tests as skipped; `attest-vitest--wanted-p`
   filters them to the run's scope.
 - No `test.each`, `describe.each`, or computed-name handling; `stress/*/dynamic*` files track it.
 - node reports nothing for tests inside `describe.skip`; discovery still lists them.
-- The name collides with Neovim's neotest; rename before publishing.
 - `logs/` in this directory belongs to another tool and is not tracked.
 
 ## Next work, in rough priority

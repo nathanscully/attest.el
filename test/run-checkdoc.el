@@ -11,7 +11,7 @@
 
 (require 'checkdoc)
 
-(let ((checkdoc-diagnostic-buffer "*neotest-checkdoc*")
+(let ((checkdoc-diagnostic-buffer "*attest-checkdoc*")
       (checkdoc-verb-check-experimental-flag nil))
   (dolist (file command-line-args-left)
     (checkdoc-file file))
