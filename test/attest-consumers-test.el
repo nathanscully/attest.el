@@ -118,5 +118,42 @@
                                        (attest-run-failed-results run)))
                    '("fails on purpose" "throws")))))
 
+(ert-deftest attest-run-description-names-the-scope ()
+  "Each run scope describes itself for the progress message."
+  (should (equal (attest-run-description
+                  (list :scope 'file :file "/tmp/demo.test.ts"))
+                 "demo.test.ts"))
+  (should (equal (attest-run-description
+                  (list :scope 'targets
+                        :targets (list (list :name "adds" :file "/tmp/a.ts"))))
+                 "adds"))
+  (should (equal (attest-run-description
+                  (list :scope 'targets
+                        :targets (list (list :name "a" :file "/tmp/a.ts")
+                                       (list :name "b" :file "/tmp/b.ts"))))
+                 "2 targets"))
+  (should (equal (attest-run-description
+                  (list :scope 'project :root "/tmp/proj/"
+                        :files '("/tmp/proj/a.ts" "/tmp/proj/b.ts")))
+                 "2 files in proj")))
+
+(ert-deftest attest-progress-marks-and-clears-the-mode-line ()
+  "A running run shows in the mode line of the buffers it covers."
+  (let ((file (attest-test-fixture "demo.test.ts")))
+    (with-current-buffer (find-file-noselect file)
+      (unwind-protect
+          (let ((run (list :scope 'file :file file :status 'running
+                           :start-time (float-time))))
+            (attest--progress-start run)
+            (should (memq 'attest--progress mode-line-process))
+            (should (stringp attest--progress))
+            (should (string-match-p "attest" attest--progress))
+            (plist-put run :status 'finished)
+            (attest--progress-stop run)
+            (should-not attest--progress)
+            (should-not attest--progress-timer))
+        (set-buffer-modified-p nil)
+        (kill-buffer)))))
+
 (provide 'attest-consumers-test)
 ;;; attest-consumers-test.el ends here

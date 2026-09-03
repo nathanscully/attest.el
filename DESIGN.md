@@ -84,10 +84,12 @@ shallower entries.
 
     attest-run
       -> backend :command
+      -> progress: start message, mode-line timer ticking every second
       -> make-process, stdout -> *attest* (ansi-color, compilation-minor-mode)
                        stderr -> line splitter -> backend :parse-line
       -> attest--record: puthash id result; run attest-result-functions
-      -> sentinel: attest-run-finished-functions, summary message
+      -> sentinel: clear progress, attest-run-finished-functions,
+         summary message
 
 Consumers subscribe to three hooks and read the shared cache
 `attest--results` (id -> latest result). Core knows nothing about them.

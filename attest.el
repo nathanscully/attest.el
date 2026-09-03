@@ -454,6 +454,69 @@ ROOT is the backend's root, which can be a package inside a larger
                        (funcall pred file)))
                 (if project (project-files project) nil))))
 
+(defun attest-run-description (run)
+  "Return a short human description of what RUN covers."
+  (pcase (plist-get run :scope)
+    ('project (format "%d files in %s"
+                      (length (plist-get run :files))
+                      (file-name-nondirectory
+                       (directory-file-name (plist-get run :root)))))
+    ('targets (let ((targets (plist-get run :targets)))
+                (if (= (length targets) 1)
+                    (plist-get (car targets) :name)
+                  (format "%d targets" (length targets)))))
+    (_ (file-name-nondirectory (or (plist-get run :file) "")))))
+
+(defvar attest--progress-timer nil
+  "Timer refreshing the mode line while a run is in flight.")
+
+(defvar-local attest--progress nil
+  "Mode line construct shown while a run covering this buffer is active.")
+
+(defun attest--progress-buffers (run)
+  "Return the live buffers RUN covers."
+  (let ((files (attest-run-files run)))
+    (seq-filter (lambda (buffer)
+                  (with-current-buffer buffer
+                    (and buffer-file-name (member buffer-file-name files))))
+                (buffer-list))))
+
+(defun attest--progress-update (run)
+  "Refresh the mode line indicator for RUN."
+  (if (not (eq (plist-get run :status) 'running))
+      (attest--progress-stop run)
+    (let ((text (format " [attest %ds]"
+                        (truncate (- (float-time) (plist-get run :start-time))))))
+      (dolist (buffer (attest--progress-buffers run))
+        (with-current-buffer buffer
+          (setq attest--progress text)))
+      (force-mode-line-update t))))
+
+(defun attest--progress-start (run)
+  "Show that RUN has started, in the echo area and the mode line."
+  (message "attest: running %s..." (attest-run-description run))
+  (dolist (buffer (attest--progress-buffers run))
+    (with-current-buffer buffer
+      (unless (memq 'attest--progress mode-line-process)
+        (setq-local mode-line-process
+                    (append (if (listp mode-line-process) mode-line-process
+                              (list mode-line-process))
+                            '(attest--progress))))))
+  (attest--progress-update run)
+  (when attest--progress-timer (cancel-timer attest--progress-timer))
+  (setq attest--progress-timer
+        (run-at-time 1 1 #'attest--progress-update run)))
+
+(defun attest--progress-stop (run)
+  "Clear the mode line indicator left by RUN."
+  (when attest--progress-timer
+    (cancel-timer attest--progress-timer)
+    (setq attest--progress-timer nil))
+  (dolist (buffer (attest--progress-buffers run))
+    (with-current-buffer buffer
+      (setq attest--progress nil)))
+  (force-mode-line-update t))
+
 (defun attest--make-run (scope &rest props)
   "Build a run plist for SCOPE from the current buffer, merging PROPS."
   (let* ((backend (attest--require-backend))
@@ -556,6 +619,7 @@ otherwise they only go to the output buffer."
   (attest--flush-lines run :partial-stderr)
   (plist-put run :status status)
   (plist-put run :end-time (float-time))
+  (attest--progress-stop run)
   (run-hook-with-args 'attest-run-finished-functions run)
   (let* ((results (attest-run-results run))
          (failed (length (attest-run-failed-results run)))
@@ -607,6 +671,7 @@ otherwise they only go to the output buffer."
              (and buffer-file-name
                   (string-prefix-p root (expand-file-name buffer-file-name)))))))
     (setq attest--last-run run)
+    (attest--progress-start run)
     (run-hook-with-args 'attest-run-started-functions run)
     (condition-case err
         (attest--spawn run command directory parse-stream)
