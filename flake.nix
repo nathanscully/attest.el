@@ -1,5 +1,5 @@
 {
-  description = "neotest.el, an Emacs test runner with per-language backends";
+  description = "attest.el, an Emacs test runner with per-language backends";
 
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
 
@@ -46,8 +46,8 @@
       # node, cargo and pytest integration tests run for real.
       checks = forAllSystems (pkgs:
         let t = toolchain pkgs; in {
-          neotest = pkgs.stdenv.mkDerivation {
-            name = "neotest-make-all";
+          attest = pkgs.stdenv.mkDerivation {
+            name = "attest-make-all";
             src = self;
             nativeBuildInputs = [ t.emacs pkgs.gnumake ] ++ t.runners;
             EMACS_TREE_SITTER_GRAMMARS = "${t.grammars}/lib";

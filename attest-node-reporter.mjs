@@ -11,7 +11,7 @@ const failure = (error) => {
 const state = (type, data) =>
   data.skip ? "skipped" : data.todo ? "todo" : type === "test:fail" ? "failed" : "passed";
 
-export default async function* neotestReporter(source) {
+export default async function* attestReporter(source) {
   for await (const { type, data } of source) {
     if (type === "test:start") {
       stack.length = data.nesting;
@@ -22,7 +22,7 @@ export default async function* neotestReporter(source) {
       !data.file.endsWith(data.name)
     ) {
       yield `${JSON.stringify({
-        type: "neotest:test",
+        type: "attest:test",
         kind: data.details?.type === "suite" ? "namespace" : "test",
         names: [...stack.slice(0, data.nesting), data.name],
         file: data.file,

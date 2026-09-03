@@ -1,10 +1,10 @@
-;;; neotest-flymake.el --- Show test failures through flymake -*- lexical-binding: t; -*-
+;;; attest-flymake.el --- Show test failures through flymake -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2026 Nathan Scully
 
 ;; Author: Nathan Scully
 ;; Maintainer: Nathan Scully
-;; URL: https://github.com/nathanscully/emacs-neotest
+;; URL: https://github.com/nathanscully/attest.el
 
 ;; This file is not part of GNU Emacs.
 
@@ -17,17 +17,17 @@
 ;; buffer go to `flymake-list-only-diagnostics', which the project
 ;; listing also reads.
 ;;
-;; Enable with `neotest-flymake-mode' in test buffers, or globally with
-;; `global-neotest-flymake-mode'.
+;; Enable with `attest-flymake-mode' in test buffers, or globally with
+;; `global-attest-flymake-mode'.
 
 ;;; Code:
 
 (require 'flymake)
-(require 'neotest)
+(require 'attest)
 
-(defvar neotest-flymake-mode)
+(defvar attest-flymake-mode)
 
-(defun neotest-flymake--region (result)
+(defun attest-flymake--region (result)
   "Return the (BEG . END) buffer region RESULT should highlight."
   (let* ((location (plist-get result :location))
          (line (or (car location) (plist-get result :line) 1))
@@ -38,41 +38,41 @@
           (forward-line (1- line))
           (cons (line-beginning-position) (line-end-position))))))
 
-(defun neotest-flymake--message (result)
+(defun attest-flymake--message (result)
   "Return the diagnostic text for RESULT."
   (format "%s: %s"
-          (string-join (neotest-id-names (plist-get result :id)) " > ")
+          (string-join (attest-id-names (plist-get result :id)) " > ")
           (string-trim (or (plist-get result :message) "failed"))))
 
-(defun neotest-flymake--failures (file)
+(defun attest-flymake--failures (file)
   "Return the failed test results recorded for FILE."
   (seq-filter (lambda (r) (and (eq (plist-get r :status) 'failed)
                                (eq (plist-get r :type) 'test)))
-              (neotest-results-for-file file)))
+              (attest-results-for-file file)))
 
-(defun neotest-flymake--buffer-diagnostics ()
+(defun attest-flymake--buffer-diagnostics ()
   "Return flymake diagnostics for the current buffer's failed tests."
   (when buffer-file-name
     (mapcar (lambda (result)
-              (let ((region (neotest-flymake--region result)))
+              (let ((region (attest-flymake--region result)))
                 (flymake-make-diagnostic (current-buffer) (car region) (cdr region)
                                          :error
-                                         (neotest-flymake--message result)
+                                         (attest-flymake--message result)
                                          result)))
-            (neotest-flymake--failures buffer-file-name))))
+            (attest-flymake--failures buffer-file-name))))
 
-(defvar neotest-flymake--clearing nil
+(defvar attest-flymake--clearing nil
   "Non-nil while the backend must report no diagnostics.
 Bound when the mode turns off, so flymake drops this backend's
 diagnostics before the hook is removed; Emacs 30 keeps the
 diagnostics of a backend that merely stops running.")
 
-(defun neotest-flymake-backend (report-fn &rest _args)
+(defun attest-flymake-backend (report-fn &rest _args)
   "Report the current buffer's failed tests to REPORT-FN."
-  (funcall report-fn (unless neotest-flymake--clearing
-                       (neotest-flymake--buffer-diagnostics))))
+  (funcall report-fn (unless attest-flymake--clearing
+                       (attest-flymake--buffer-diagnostics))))
 
-(defun neotest-flymake--list-only-diagnostic (result)
+(defun attest-flymake--list-only-diagnostic (result)
   "Return a file-locus diagnostic for RESULT, for unvisited files."
   (let ((location (plist-get result :location)))
     (flymake-make-diagnostic (plist-get result :file)
@@ -80,45 +80,45 @@ diagnostics of a backend that merely stops running.")
                                    (cdr location))
                              nil
                              :error
-                             (neotest-flymake--message result)
+                             (attest-flymake--message result)
                              result)))
 
-(defun neotest-flymake--refresh (run)
+(defun attest-flymake--refresh (run)
   "Republish diagnostics for every file touched by RUN."
   (let ((files (delete-dups (mapcar (lambda (r) (plist-get r :file))
-                                    (neotest-run-results run)))))
+                                    (attest-run-results run)))))
     (dolist (file files)
       (setf (alist-get file flymake-list-only-diagnostics nil 'remove #'string=) nil)
       (if-let* ((buffer (find-buffer-visiting file)))
           (with-current-buffer buffer
-            (when (and neotest-flymake-mode flymake-mode)
+            (when (and attest-flymake-mode flymake-mode)
               (flymake-start nil t)))
-        (when-let* ((diags (mapcar #'neotest-flymake--list-only-diagnostic
-                                   (neotest-flymake--failures file))))
+        (when-let* ((diags (mapcar #'attest-flymake--list-only-diagnostic
+                                   (attest-flymake--failures file))))
           (push (cons file diags) flymake-list-only-diagnostics))))))
 
 ;;;###autoload
-(define-minor-mode neotest-flymake-mode
-  "Show neotest failures as flymake diagnostics in this buffer."
+(define-minor-mode attest-flymake-mode
+  "Show attest failures as flymake diagnostics in this buffer."
   :lighter nil
-  (if neotest-flymake-mode
+  (if attest-flymake-mode
       (progn
-        (add-hook 'flymake-diagnostic-functions #'neotest-flymake-backend nil t)
-        (add-hook 'neotest-run-finished-functions #'neotest-flymake--refresh)
+        (add-hook 'flymake-diagnostic-functions #'attest-flymake-backend nil t)
+        (add-hook 'attest-run-finished-functions #'attest-flymake--refresh)
         (when flymake-mode (flymake-start nil t)))
-    (let ((neotest-flymake--clearing t))
+    (let ((attest-flymake--clearing t))
       (when flymake-mode (flymake-start nil t)))
-    (remove-hook 'flymake-diagnostic-functions #'neotest-flymake-backend t)))
+    (remove-hook 'flymake-diagnostic-functions #'attest-flymake-backend t)))
 
-(defun neotest-flymake--maybe-enable ()
-  "Enable `neotest-flymake-mode' when a backend owns the buffer."
-  (when (and buffer-file-name (neotest-backend-for-buffer))
-    (neotest-flymake-mode 1)))
+(defun attest-flymake--maybe-enable ()
+  "Enable `attest-flymake-mode' when a backend owns the buffer."
+  (when (and buffer-file-name (attest-backend-for-buffer))
+    (attest-flymake-mode 1)))
 
 ;;;###autoload
-(define-globalized-minor-mode global-neotest-flymake-mode
-  neotest-flymake-mode neotest-flymake--maybe-enable
-  :group 'neotest)
+(define-globalized-minor-mode global-attest-flymake-mode
+  attest-flymake-mode attest-flymake--maybe-enable
+  :group 'attest)
 
-(provide 'neotest-flymake)
-;;; neotest-flymake.el ends here
+(provide 'attest-flymake)
+;;; attest-flymake.el ends here

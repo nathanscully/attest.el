@@ -1,4 +1,4 @@
-export default class NeotestReporter {
+export default class AttestReporter {
   onTestCaseResult(testCase) {
     const result = testCase.result();
     const names = [];
@@ -8,7 +8,7 @@ export default class NeotestReporter {
     names.push(testCase.name);
     process.stderr.write(
       `${JSON.stringify({
-        type: "neotest:test",
+        type: "attest:test",
         names,
         file: testCase.module.moduleId,
         location: testCase.location,

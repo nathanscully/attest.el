@@ -1,5 +1,5 @@
 {
-  "name": "neotest-vitest-fixture",
+  "name": "attest-vitest-fixture",
   "private": true,
   "type": "module",
   "devDependencies": {
