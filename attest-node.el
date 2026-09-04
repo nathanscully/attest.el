@@ -57,9 +57,31 @@
   :type '(repeat string)
   :package-version '(attest . "0.1.0"))
 
+(defconst attest-node--unset-env '("NODE_OPTIONS")
+  "Variables removed from the environment of every node run.
+A `NODE_OPTIONS' inherited from the user\='s shell can load a module or
+a flag that breaks `node --test\='.  An entry without an `=\=' removes the
+variable from `process-environment\='.")
+
+(defun attest-node-env ()
+  "Return the environment entries for a node or vitest run.
+`attest-node-env' comes first, then the entries that unset the
+variables in `attest-node--unset-env\='."
+  (append attest-node-env attest-node--unset-env))
+
 (defcustom attest-node-test-file-regexp
-  "\\(?:[._-]test\\|[._-]spec\\)\\.[cm]?[jt]sx?\\'"
-  "Regexp matching test file names."
+  "\\(?:^\\|[/._-]\\)\\(?:test\\|spec\\)\\(?:[._-][^/]*\\)?\\.[cm]?[jt]sx?\\'"
+  "Regexp matching test file names, matched against the whole path.
+Covers what `node --test\=' collects by name: `NAME.test.js\=',
+`NAME-test.js\=', `NAME_test.js\=', `test-NAME.js\=' and a bare `test.js\=',
+each with a `spec\=' spelling too."
+  :type 'regexp
+  :package-version '(attest . "0.1.0"))
+
+(defcustom attest-node-test-directory-regexp "\\(?:^\\|/\\)tests?/"
+  "Regexp matching directories whose files are all test files.
+`node --test\=' collects everything under `test/\=' whatever the file is
+called; vitest projects conventionally use `tests/\=' the same way."
   :type 'regexp
   :package-version '(attest . "0.1.0"))
 
@@ -105,9 +127,16 @@ Falls back to the `project-current' root."
         (expand-file-name (project-root project)))))
 
 (defun attest-node-test-file-p (file)
-  "Return non-nil when FILE looks like a node test file."
-  (and (string-match-p attest-node-test-file-regexp file)
-       (not (string-match-p "/node_modules/" file))))
+  "Return non-nil when FILE looks like a node test file.
+A file qualifies by name, per `attest-node-test-file-regexp\=', or by
+living under a directory matching `attest-node-test-directory-regexp\='.
+Either way it must be a JavaScript or TypeScript source outside
+node_modules."
+  (and (string-match-p "\\.[cm]?[jt]sx?\\'" file)
+       (not (string-match-p "/node_modules/" file))
+       (or (string-match-p attest-node-test-file-regexp file)
+           (string-match-p attest-node-test-directory-regexp file))
+       t))
 
 (defun attest-node--buffer-p ()
   "Return non-nil when the current buffer is a JavaScript or TypeScript test."
@@ -155,7 +184,7 @@ A test matches exactly; a namespace also matches every test below it."
                            patterns
                            (mapcar (lambda (f) (file-relative-name f root)) files))
           :directory root
-          :env attest-node-env
+          :env (attest-node-env)
           :parse-stream 'stderr)))
 
 (defun attest-node--frame-in-file (stack file)
@@ -209,10 +238,11 @@ Lines that are not JSON, such as syntax errors, go to the output."
     (attest-append-output run (concat line "\n"))
     nil))
 
-(defun attest-node--parse-target-line (run line)
+(defun attest-node-parse-scoped-line (run line)
   "Parse LINE from RUN, dropping results outside its targets.
-`--test-name-pattern' selects by name, so a targets run covering more
-than one file can also execute a same-named test elsewhere."
+Runners select targets by name, so a `targets' run covering more than
+one file can also execute a same-named test elsewhere.  Shared with
+attest-vitest.el, whose reporter emits the same event shape."
   (when-let* ((result (attest-node--parse-line run line)))
     (and (attest-target-result-p run result) result)))
 
@@ -222,7 +252,7 @@ than one file can also execute a same-named test elsewhere."
   :root #'attest-node-root
   :query #'attest-node--query
   :command #'attest-node--command
-  :parse-line #'attest-node--parse-target-line)
+  :parse-line #'attest-node-parse-scoped-line)
 
 (provide 'attest-node)
 ;;; attest-node.el ends here

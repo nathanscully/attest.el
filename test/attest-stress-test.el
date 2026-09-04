@@ -166,14 +166,45 @@ This documents the known gap; the test carrying it expects failure."
   (and (executable-find attest-node-executable)
        (treesit-language-available-p 'typescript)))
 
+(defconst attest-stress-node-unreported
+  (let ((naming (attest-stress--file "node/src/naming.test.ts"))
+        (skipping (attest-stress--file "node/src/skipping.test.ts")))
+    (list (attest-make-id naming "skipped suite" "never runs")
+          (attest-make-id skipping "outer skipped suite" "direct child never runs")
+          (attest-make-id skipping "outer skipped suite"
+                          "nested under a skipped suite" "grandchild never runs")
+          (attest-make-id skipping "suite around a skipped suite"
+                          "inner skipped suite" "inner child never runs")))
+  "Ids discovery finds that `node --test' never reports.
+Node emits one skipped event for a `describe.skip' suite and nothing
+for the tests inside it, so discovery lists them and the runner does
+not.  Sorted the way `attest-stress--check-parity' compares.")
+
 (ert-deftest attest-stress-node-project-parity ()
   (skip-unless (attest-stress-node--available-p))
   (let ((run (attest-stress--run attest-stress-node-many #'typescript-ts-mode 'project)))
-    (attest-stress--check-parity
-     run (list (attest-make-id (attest-stress--file "node/src/naming.test.ts")
-                                "skipped suite" "never runs")))
+    (attest-stress--check-parity run attest-stress-node-unreported)
     (attest-stress--check-many run attest-stress-node-many)
     (attest-stress--check-rerun-failed run)))
+
+(ert-deftest attest-stress-node-collects-test-directory ()
+  "A project run covers `test/' files that carry no test suffix.
+`node --test' collects everything under `test/' whatever it is called,
+so discovery must claim those files too."
+  (skip-unless (attest-stress-node--available-p))
+  (let* ((plain (attest-stress--file "node/test/plain.js"))
+         (deeper (attest-stress--file "node/test/nested/deeper.js"))
+         (files (attest--project-test-files 'node attest-stress-node-root)))
+    (should (member plain files))
+    (should (member deeper files))
+    (let* ((run (attest-stress--run attest-stress-node-many #'typescript-ts-mode 'project))
+           (ids (attest-stress--test-ids (attest-run-results run))))
+      (should (member (attest-make-id plain "directory collected by name"
+                                      "passes without a test suffix")
+                      ids))
+      (should (member (attest-make-id deeper "nested under the test directory"
+                                      "still collected")
+                      ids)))))
 
 (ert-deftest attest-stress-node-dynamic-names ()
   :expected-result :failed

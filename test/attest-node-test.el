@@ -230,5 +230,78 @@ file of the same run must not reach the cache."
     (should (funcall parse run (funcall line wanted)))
     (should-not (funcall parse run (funcall line other)))))
 
+(defconst attest-node-test--concurrent-dir
+  (attest-test-fixture "concurrent/")
+  "Directory holding the two files of the concurrency fixture.")
+
+(defun attest-node-test--replay-reporter (reporter)
+  "Return the events the reporter at REPORTER emits for the concurrent stream.
+The raw node events of two test files, recorded one file at a time and
+then interleaved, are piped through REPORTER by replay.mjs.  This is
+the stream a parent reporter sees when `node --test' runs files
+concurrently, without depending on how a given node version schedules
+them."
+  (let ((raw (string-join (attest-test-fixture-lines "concurrent-raw-events.jsonl")
+                          "\n")))
+    (with-temp-buffer
+      (insert raw "\n")
+      (let ((status (call-process-region
+                     (point-min) (point-max) attest-node-executable
+                     t t nil
+                     (expand-file-name "replay.mjs" attest-node-test--concurrent-dir)
+                     reporter)))
+        (unless (eq status 0)
+          (ert-fail (format "replay.mjs exited %S: %s" status (buffer-string)))))
+      (split-string (buffer-string) "\n" t))))
+
+(ert-deftest attest-node-reporter-keeps-one-suite-stack-per-file ()
+  "Interleaved events from two files must not share a suite stack.
+`node --test' runs files concurrently and one reporter sees them all,
+so a stack keyed only by nesting depth gives a test the ancestry of
+whichever file started a suite last."
+  (skip-unless (executable-find attest-node-executable))
+  (let* ((alpha (expand-file-name "alpha.test.mjs" attest-node-test--concurrent-dir))
+         (beta (expand-file-name "beta.test.mjs" attest-node-test--concurrent-dir))
+         (ids (attest-test-with-run run
+                (mapcar (lambda (r) (plist-get r :id))
+                        (delq nil (mapcar (lambda (l) (attest-node--parse-line run l))
+                                          (attest-node-test--replay-reporter
+                                           attest-node--reporter)))))))
+    (should (member (attest-make-id alpha "alpha suite" "alpha inner" "alpha deep") ids))
+    (should (member (attest-make-id alpha "alpha suite" "alpha shallow") ids))
+    (should (member (attest-make-id beta "beta suite" "beta inner" "beta deep") ids))
+    (should (member (attest-make-id beta "beta suite" "beta shallow") ids))
+    (should-not (seq-find (lambda (id)
+                            (or (and (equal (attest-id-file id) alpha)
+                                     (member "beta suite" (attest-id-names id)))
+                                (and (equal (attest-id-file id) beta)
+                                     (member "alpha suite" (attest-id-names id)))))
+                          ids))))
+
+(ert-deftest attest-node-test-file-p-covers-node-default-glob ()
+  "Discovery claims every file `node --test' collects by default.
+Node collects `test/' recursively whatever the files are called, plus
+the `test\=' and `spec\=' name forms, and nothing under node_modules."
+  (dolist (file '("/p/src/a.test.js" "/p/src/a.test.ts" "/p/src/a.spec.tsx"
+                  "/p/src/c_test.js" "/p/src/d-test.js" "/p/src/test-b.js"
+                  "/p/test.js" "/p/test/foo.js" "/p/test/sub/bar.js"
+                  "/p/tests/baz.ts"))
+    (should (attest-node-test-file-p file)))
+  (dolist (file '("/p/src/plain.js" "/p/src/latest.js" "/p/src/contest.js"
+                  "/p/src/protest.ts" "/p/src/testing.js" "/p/src/manifest.js"
+                  "/p/attest.js" "/p/src/a.md"
+                  "/p/node_modules/x/a.test.js" "/p/node_modules/x/test/y.js"))
+    (should-not (attest-node-test-file-p file))))
+
+(ert-deftest attest-node-command-unsets-node-options ()
+  "The node command spec removes NODE_OPTIONS from the child environment.
+A NODE_OPTIONS inherited from the user\='s shell can break `node --test\='."
+  (let* ((spec (attest-node--command (list :backend 'node :scope 'file :root "/repo/"
+                                           :file "/repo/src/a.test.ts")))
+         (process-environment (append (plist-get spec :env)
+                                      (list "NODE_OPTIONS=--require=/breaks/it"))))
+    (should (member "NODE_OPTIONS" (plist-get spec :env)))
+    (should-not (getenv "NODE_OPTIONS"))))
+
 (provide 'attest-node-test)
 ;;; attest-node-test.el ends here

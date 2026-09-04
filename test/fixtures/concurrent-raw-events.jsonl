@@ -1,0 +1,16 @@
+{"type":"test:start","data":{"name":"alpha suite","nesting":0,"file":"__FIXTURES__/concurrent/alpha.test.mjs","line":3,"column":1,"details":{}}}
+{"type":"test:start","data":{"name":"beta suite","nesting":0,"file":"__FIXTURES__/concurrent/beta.test.mjs","line":3,"column":1,"details":{}}}
+{"type":"test:start","data":{"name":"alpha inner","nesting":1,"file":"__FIXTURES__/concurrent/alpha.test.mjs","line":4,"column":3,"details":{}}}
+{"type":"test:start","data":{"name":"beta inner","nesting":1,"file":"__FIXTURES__/concurrent/beta.test.mjs","line":4,"column":3,"details":{}}}
+{"type":"test:start","data":{"name":"alpha deep","nesting":2,"file":"__FIXTURES__/concurrent/alpha.test.mjs","line":5,"column":5,"details":{}}}
+{"type":"test:start","data":{"name":"beta deep","nesting":2,"file":"__FIXTURES__/concurrent/beta.test.mjs","line":5,"column":5,"details":{}}}
+{"type":"test:pass","data":{"name":"alpha deep","nesting":2,"file":"__FIXTURES__/concurrent/alpha.test.mjs","line":5,"column":5,"details":{"type":"test","duration_ms":0.28375}}}
+{"type":"test:pass","data":{"name":"beta deep","nesting":2,"file":"__FIXTURES__/concurrent/beta.test.mjs","line":5,"column":5,"details":{"type":"test","duration_ms":0.296917}}}
+{"type":"test:pass","data":{"name":"alpha inner","nesting":1,"file":"__FIXTURES__/concurrent/alpha.test.mjs","line":4,"column":3,"details":{"type":"suite","duration_ms":0.650583}}}
+{"type":"test:pass","data":{"name":"beta inner","nesting":1,"file":"__FIXTURES__/concurrent/beta.test.mjs","line":4,"column":3,"details":{"type":"suite","duration_ms":0.676208}}}
+{"type":"test:start","data":{"name":"alpha shallow","nesting":1,"file":"__FIXTURES__/concurrent/alpha.test.mjs","line":7,"column":3,"details":{}}}
+{"type":"test:start","data":{"name":"beta shallow","nesting":1,"file":"__FIXTURES__/concurrent/beta.test.mjs","line":7,"column":3,"details":{}}}
+{"type":"test:pass","data":{"name":"alpha shallow","nesting":1,"file":"__FIXTURES__/concurrent/alpha.test.mjs","line":7,"column":3,"details":{"type":"test","duration_ms":0.0625}}}
+{"type":"test:pass","data":{"name":"beta shallow","nesting":1,"file":"__FIXTURES__/concurrent/beta.test.mjs","line":7,"column":3,"details":{"type":"test","duration_ms":0.110375}}}
+{"type":"test:pass","data":{"name":"alpha suite","nesting":0,"file":"__FIXTURES__/concurrent/alpha.test.mjs","line":3,"column":1,"details":{"type":"suite","duration_ms":0.993916}}}
+{"type":"test:pass","data":{"name":"beta suite","nesting":0,"file":"__FIXTURES__/concurrent/beta.test.mjs","line":3,"column":1,"details":{"type":"suite","duration_ms":1.070875}}}

@@ -1,4 +1,14 @@
-const stack = [];
+const stacks = new Map();
+
+const stackFor = (file) => {
+  const key = file ?? "";
+  let stack = stacks.get(key);
+  if (!stack) {
+    stack = [];
+    stacks.set(key, stack);
+  }
+  return stack;
+};
 
 const failure = (error) => {
   const cause = error?.cause;
@@ -14,6 +24,7 @@ const state = (type, data) =>
 export default async function* attestReporter(source) {
   for await (const { type, data } of source) {
     if (type === "test:start") {
+      const stack = stackFor(data.file);
       stack.length = data.nesting;
       stack[data.nesting] = data.name;
     } else if (
@@ -24,7 +35,7 @@ export default async function* attestReporter(source) {
       yield `${JSON.stringify({
         type: "attest:test",
         kind: data.details?.type === "suite" ? "namespace" : "test",
-        names: [...stack.slice(0, data.nesting), data.name],
+        names: [...stackFor(data.file).slice(0, data.nesting), data.name],
         file: data.file,
         location: { line: data.line, column: data.column },
         state: state(type, data),
