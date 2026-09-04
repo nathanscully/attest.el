@@ -193,5 +193,51 @@
                                  (attest-run-file-positions run file))))))
     (should-not (attest-run-position run (attest-make-id file "no such test")))))
 
+(ert-deftest attest-pruning-drops-tests-discovery-no-longer-finds ()
+  "A deleted or renamed test leaves no stale failure behind."
+  (clrhash attest--results)
+  (let* ((file (attest-test-fixture "demo.test.ts"))
+         (ghost (attest-make-id file "deleted test"))
+         (run (list :backend 'node :scope 'file :file file
+                    :result-ids nil :results nil)))
+    (attest--record run (list :id ghost :name "deleted test" :status 'failed
+                              :type 'test :file file))
+    (should (member "deleted test"
+                    (mapcar (lambda (r) (plist-get r :name))
+                            (attest-flymake--failures file))))
+    (let ((next (list :backend 'node :scope 'file :file file
+                      :result-ids nil :results nil)))
+      (attest--prune-run-scope next)
+      (should-not (attest-result ghost))
+      (should-not (member "deleted test"
+                          (mapcar (lambda (r) (plist-get r :name))
+                                  (attest-flymake--failures file)))))))
+
+(ert-deftest attest-pruning-keeps-tests-discovery-still-finds ()
+  "Pruning leaves results whose tests are still in the file."
+  (let* ((run (attest-consumers-test--load-run))
+         (file (attest-test-fixture "demo.test.ts"))
+         (before (length (attest-results-for-file file)))
+         (next (list :backend 'node :scope 'file :file file
+                     :result-ids nil :results nil)))
+    (ignore run)
+    (should (> before 0))
+    (attest--prune-run-scope next)
+    (should (= (length (attest-results-for-file file)) before))))
+
+(ert-deftest attest-pruning-spares-unreadable-files ()
+  "A file that cannot be read keeps its cached results."
+  (clrhash attest--results)
+  (let* ((missing (attest-test-fixture "no-such-file.test.ts"))
+         (id (attest-make-id missing "orphan"))
+         (run (list :backend 'node :scope 'file :file missing
+                    :result-ids nil :results nil)))
+    (attest--record run (list :id id :name "orphan" :status 'failed
+                              :type 'test :file missing))
+    (should-not (file-readable-p missing))
+    (attest--prune-run-scope (list :backend 'node :scope 'file :file missing
+                                   :result-ids nil :results nil))
+    (should (attest-result id))))
+
 (provide 'attest-consumers-test)
 ;;; attest-consumers-test.el ends here

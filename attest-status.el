@@ -124,7 +124,8 @@
       (when (and attest-status-mode buffer-file-name
                  (member buffer-file-name (attest-run-files run)))
         (dolist (result (attest-results-for-file buffer-file-name))
-          (attest-status--place result 'running))))))
+          (when (attest-run-position run (plist-get result :id))
+            (attest-status--place result 'running)))))))
 
 ;;;###autoload
 (define-minor-mode attest-status-mode
