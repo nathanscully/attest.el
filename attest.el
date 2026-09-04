@@ -83,20 +83,39 @@ only when at least one test failed or the runner exited abnormally."
   :type 'boolean
   :package-version '(attest . "0.1.0"))
 
+(defcustom attest-project-skip-directories
+  '("node_modules" ".git" "target" "dist" "build" ".venv" "__pycache__")
+  "Directory names skipped when walking a project root for test files.
+Only consulted for a root `project-current' knows nothing about; a
+project supplies its own file list."
+  :type '(repeat string)
+  :package-version '(attest . "0.1.0"))
+
 (defvar attest-run-started-functions nil
   "Abnormal hook called with the run plist when a test process starts.
 Consumers such as `attest-status-mode' use it to mark known tests as
-running.  Also see `attest-run-finished-functions'.")
+running.  Also see `attest-run-finished-functions'.
+
+Called from the run's own command, so a function here must be fast and
+must not call `attest-run', which would kill the run about to start.")
 
 (defvar attest-result-functions nil
   "Abnormal hook called with RUN and RESULT as each result arrives.
 RESULT is already stored, so `attest-result' returns it.  Also see
-`attest-run-finished-functions'.")
+`attest-run-finished-functions'.
+
+Called from the process filter, so a function here must be fast: slow
+work blocks reading the runner\='s output.  It must not call
+`attest-run', which would kill the run being reported.")
 
 (defvar attest-run-finished-functions nil
   "Abnormal hook called with the run plist when the test process exits.
-The run's :status is `finished', `killed' or `error' by then, and
-`attest-run-results' returns everything it recorded.")
+The run\='s :status is `finished', `killed' or `error' by then, and
+`attest-run-results' returns everything it recorded.
+
+A function here may start work of its own, as `attest-flymake-mode'
+does, but must not call `attest-run' unconditionally: that reruns on
+every finish and never terminates.")
 
 ;;;; Backends
 
@@ -408,20 +427,70 @@ Tests win over namespaces of equal extent.  POSITIONS defaults to
 (defvar attest--last-run nil
   "The most recent run plist.")
 
+(defvar attest--results-by-file (make-hash-table :test 'equal)
+  "Ids of the results recorded for each file, keyed by true name.
+Lets a consumer ask for one file\='s results without walking every id
+in `attest--results'.")
+
+(defun attest--file-key (file)
+  "Return the cache key for FILE.
+True names, so a symlinked or /var against /private/var spelling of the
+same file lands on one entry."
+  (and file (file-truename (expand-file-name file))))
+
+(defun attest--file-ids (file)
+  "Return the table of result ids recorded for FILE, creating it if needed."
+  (let ((key (attest--file-key file)))
+    (or (gethash key attest--results-by-file)
+        (puthash key (make-hash-table :test 'equal) attest--results-by-file))))
+
+(defun attest-cache-result (result)
+  "Store RESULT in the cache and its file index, outside any run.
+`attest--record' is the path a runner takes; this is for a caller that
+has a result already, such as a test seeding known state."
+  (let ((id (plist-get result :id)))
+    (unless id (error "Attest: result without :id: %S" result))
+    (puthash id result attest--results)
+    (puthash id t (attest--file-ids (plist-get result :file)))
+    result))
+
+(defun attest--forget-result (id)
+  "Drop ID from the result cache and from its file\='s index."
+  (when-let* ((result (gethash id attest--results)))
+    (when-let* ((key (attest--file-key (plist-get result :file))))
+      (when-let* ((ids (gethash key attest--results-by-file)))
+        (remhash id ids)
+        (when (zerop (hash-table-count ids))
+          (remhash key attest--results-by-file)))))
+  (remhash id attest--results))
+
 (defun attest-result (id)
   "Return the latest result recorded for ID."
   (gethash id attest--results))
 
 (defun attest-results-for-file (file)
-  "Return the latest results whose test lives in FILE."
-  (let ((file (expand-file-name file))
-        acc)
-    (maphash (lambda (_id result)
-               (when-let* ((result-file (plist-get result :file)))
-                 (when (string= (expand-file-name result-file) file)
-                   (push result acc))))
-             attest--results)
+  "Return the latest results whose test lives in FILE.
+Read from the per-file index, so the cost is the number of results in
+FILE rather than the number of results known."
+  (let (acc)
+    (when-let* ((ids (gethash (attest--file-key file) attest--results-by-file)))
+      (maphash (lambda (id _t)
+                 (when-let* ((result (gethash id attest--results)))
+                   (push result acc)))
+               ids))
     (nreverse acc)))
+
+;;;###autoload
+(defun attest-clear-results (&optional file)
+  "Forget every cached result, or only those recorded for FILE.
+Interactively with a prefix argument, clear the current buffer\='s file."
+  (interactive (list (and current-prefix-arg buffer-file-name)))
+  (if file
+      (dolist (result (attest-results-for-file file))
+        (attest--forget-result (plist-get result :id)))
+    (clrhash attest--results)
+    (clrhash attest--results-by-file))
+  (run-hook-with-args 'attest-run-finished-functions attest--last-run))
 
 (defun attest-last-run ()
   "Return the most recent run plist."
@@ -459,7 +528,12 @@ a fallback."
       (unless (plist-get result :type)
         (plist-put result :type (plist-get pos :type))))
     (unless (plist-get result :type) (plist-put result :type 'test))
+    (let ((previous (gethash id attest--results)))
+      (when (and previous (not (equal (attest--file-key (plist-get previous :file))
+                                      (attest--file-key (plist-get result :file)))))
+        (attest--forget-result id)))
     (puthash id result attest--results)
+    (puthash id t (attest--file-ids (plist-get result :file)))
     (let ((table (or (plist-get run :results)
                      (let ((new (make-hash-table :test 'equal)))
                        (plist-put run :results new)
@@ -472,15 +546,23 @@ a fallback."
 
 (defun attest--project-test-files (backend root)
   "Return the test files under ROOT accepted by BACKEND.
-ROOT is the backend's root, which can be a package inside a larger
-`project-current' checkout; files outside ROOT are dropped."
+ROOT is the backend\='s root, which can be a package inside a larger
+`project-current' checkout; files outside ROOT are dropped.  A root
+under no version control still has test files, so when `project-current'
+knows nothing about ROOT the directory is walked instead."
   (let ((pred (plist-get (attest-backend-props backend) :test-file-p))
         (project (project-current nil root)))
     (unless pred (error "Attest: backend `%s' has no :test-file-p" backend))
-    (seq-filter (lambda (file)
-                  (and (string-prefix-p root (expand-file-name file))
-                       (funcall pred file)))
-                (if project (project-files project) nil))))
+    (seq-filter (lambda (file) (and (file-in-directory-p file root)
+                                    (funcall pred file)))
+                (if project
+                    (project-files project)
+                  (directory-files-recursively
+                   root "" nil
+                   (lambda (dir)
+                     (not (member (file-name-nondirectory
+                                   (directory-file-name dir))
+                                  attest-project-skip-directories))))))))
 
 (defun attest-run-description (run)
   "Return a short human description of what RUN covers."
@@ -569,14 +651,11 @@ read failure never clears results."
     (when (or (find-buffer-visiting file) (file-readable-p file))
       (let ((known (attest-run-position-table run file))
             (stale nil))
-        (maphash (lambda (id result)
-                   (when (and (equal (expand-file-name
-                                      (or (plist-get result :file) ""))
-                                     file)
-                              (not (gethash id known)))
-                     (push id stale)))
-                 attest--results)
-        (dolist (id stale) (remhash id attest--results))
+        (dolist (result (attest-results-for-file file))
+          (let ((id (plist-get result :id)))
+            (unless (gethash id known)
+              (push id stale))))
+        (dolist (id stale) (attest--forget-result id))
         stale))))
 
 (defun attest--prune-run-scope (run)
@@ -749,7 +828,7 @@ until the pipe has nothing left."
         (save-some-buffers
          t (lambda ()
              (and buffer-file-name
-                  (string-prefix-p root (expand-file-name buffer-file-name)))))))
+                  (file-in-directory-p buffer-file-name root))))))
     (setq attest--last-run run)
     (attest--prune-run-scope run)
     (attest--progress-start run)
@@ -802,13 +881,17 @@ carrying :id, :type and :file.  Results qualify as targets too."
 (defun attest--restart (run &rest props)
   "Start a fresh copy of RUN with PROPS merged in.
 Recorded results, backend state and the position index are dropped so
-the copy behaves like a first run."
+the copy behaves like a first run.  A project run rescans its root, so
+a rerun picks up test files added or deleted since."
   (attest-kill)
   (let ((copy (copy-sequence run)))
     (dolist (key '(:result-ids :results :state :index :position-index))
       (plist-put copy key nil))
     (while props
       (plist-put copy (pop props) (pop props)))
+    (when (eq (plist-get copy :scope) 'project)
+      (plist-put copy :files (attest--project-test-files
+                              (plist-get copy :backend) (plist-get copy :root))))
     (attest--start copy)))
 
 ;;;; Commands
