@@ -609,9 +609,10 @@ knows nothing about ROOT the directory is walked instead."
     (with-current-buffer buffer
       (unless (memq 'attest--progress mode-line-process)
         (setq-local mode-line-process
-                    (append (if (listp mode-line-process) mode-line-process
+                    (append (if (listp mode-line-process)
+                                (copy-sequence mode-line-process)
                               (list mode-line-process))
-                            '(attest--progress))))))
+                            (list 'attest--progress))))))
   (attest--progress-update run)
   (when attest--progress-timer (cancel-timer attest--progress-timer))
   (setq attest--progress-timer
@@ -624,7 +625,10 @@ knows nothing about ROOT the directory is walked instead."
     (setq attest--progress-timer nil))
   (dolist (buffer (attest--progress-buffers run))
     (with-current-buffer buffer
-      (setq attest--progress nil)))
+      (setq attest--progress nil)
+      (when (consp mode-line-process)
+        (setq-local mode-line-process
+                    (remq 'attest--progress mode-line-process)))))
   (force-mode-line-update t))
 
 (defun attest-target-result-p (run result)
@@ -693,16 +697,23 @@ read failure never clears results."
                  'face 'shadow))))
     buffer))
 
+(defvar attest-output-mode-map
+  (let ((map (make-sparse-keymap)))
+    (define-key map "g" #'attest-rerun-last)
+    map)
+  "Keymap for `attest-output-mode'.
+Rebinds g, which `special-mode' gives to `revert-buffer', to rerun.")
+
 (define-derived-mode attest-output-mode special-mode "attest-out"
   "Major mode for raw attest runner output."
+  (add-to-list 'compilation-error-regexp-alist-alist
+               '(attest-file-url
+                 "(?\\(?:file://\\)?\\(/[^:()[:space:]]+\\):\\([0-9]+\\):\\([0-9]+\\))?"
+                 1 2 3))
   (setq-local compilation-error-regexp-alist
               (cons 'attest-file-url compilation-error-regexp-alist))
+  (setq-local ansi-color-context nil)
   (compilation-minor-mode 1))
-
-(add-to-list 'compilation-error-regexp-alist-alist
-             '(attest-file-url
-               "(?\\(?:file://\\)?\\(/[^:()[:space:]]+\\):\\([0-9]+\\):\\([0-9]+\\))?"
-               1 2 3))
 
 (defun attest-append-output (run string)
   "Append STRING to RUN's output buffer.
@@ -715,7 +726,9 @@ events call this to surface it."
               (at-end (= (point) (point-max))))
           (save-excursion
             (goto-char (point-max))
-            (insert (ansi-color-apply string)))
+            (let ((start (point)))
+              (insert string)
+              (ansi-color-apply-on-region start (point))))
           (when at-end (goto-char (point-max))))))))
 
 (defun attest--feed-lines (run key string)

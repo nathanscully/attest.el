@@ -119,14 +119,20 @@
         (attest-status--place result (plist-get result :status))))))
 
 (defun attest-status--on-start (run)
-  "Mark previously known tests in RUN's scope as running."
+  "Mark previously known tests in RUN\='s scope as running.
+Markers are rebuilt rather than repainted, so a test deleted since the
+last run leaves no overlay behind."
   (dolist (buffer (buffer-list))
     (with-current-buffer buffer
       (when (and attest-status-mode buffer-file-name
-                 (member buffer-file-name (attest-run-files run)))
+                 (seq-some (lambda (f) (file-equal-p f buffer-file-name))
+                           (attest-run-files run)))
+        (attest-status--clear)
         (dolist (result (attest-results-for-file buffer-file-name))
-          (when (attest-run-position run (plist-get result :id))
-            (attest-status--place result 'running)))))))
+          (attest-status--place
+           result (if (attest-run-position run (plist-get result :id))
+                      'running
+                    (plist-get result :status))))))))
 
 ;;;###autoload
 (define-minor-mode attest-status-mode
