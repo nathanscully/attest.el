@@ -22,7 +22,7 @@ def pytest_configure(config):
 
 
 def pytest_runtest_logreport(report):
-    if report.when == "call" or (report.when == "setup" and report.outcome != "passed"):
+    if report.when == "call" or (report.when in ("setup", "teardown") and report.outcome != "passed"):
         event = {
             "nodeid": report.nodeid,
             "outcome": report.outcome,

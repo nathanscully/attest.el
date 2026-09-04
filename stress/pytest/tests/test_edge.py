@@ -15,6 +15,10 @@ def test_broken_fixture(broken):
     assert True
 
 
+def test_broken_teardown(broken_teardown):
+    assert True
+
+
 def test_fails():
     x = 2
     assert x == 3
