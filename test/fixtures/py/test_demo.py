@@ -30,3 +30,13 @@ class TestScanner:
 
     def test_raises(self):
         raise RuntimeError("boom")
+
+
+@pytest.fixture
+def bad_teardown():
+    yield
+    raise RuntimeError("teardown boom")
+
+
+def test_teardown_fails(bad_teardown):
+    assert True

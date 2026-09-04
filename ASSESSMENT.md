@@ -133,7 +133,7 @@ None of these forced a third-party dependency.
 | | attest.el | verdict.el | test-cockpit.el |
 |---|---|---|---|
 | deps | none | treemacs, dash | projectile |
-| core size | 661 lines + consumers of 111-129 | 1384 | 719 |
+| core size | one core file plus one file per backend and per consumer | 1384 lines | 719 lines |
 | discovery | treesit query, shared across languages | per-backend (dart uses treesit) | regexp + sexp motion |
 | results UI | flymake inline, fringe, tabulated-list, compile-style output | treemacs tree | compile buffer, transient menu |
 | runner scopes | test, namespace, file, project, rerun-failed | test, group, file, module, project, rerun-failed | function, module, project |

@@ -62,8 +62,13 @@ so a transient read failure never clears results.
 
 `:results` maps id to the result RUN itself recorded, so
 `attest-run-results` is unaffected by later runs; `attest--results`
-holds only the latest result for an id. `:position-index` maps a file
-to an id-keyed table of its positions.
+holds only the latest result for an id, and `attest--results-by-file`
+indexes those ids by the file's true name so a consumer can ask for one
+file's results without walking every id. `attest-cache-result` writes
+both tables for a caller that has a result outside a run, and
+`attest-clear-results` forgets everything, or only one file's results
+when called with a prefix argument. `:position-index` maps a file to an
+id-keyed table of its positions.
 
 `:scope` is `file`, `project` or `targets`. A `targets` run carries
 `:targets`, a list of position plists (`:id`, `:type`, `:file`);
