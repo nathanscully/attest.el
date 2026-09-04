@@ -167,9 +167,8 @@
          (finished nil)
          (attest-run-finished-functions (list (lambda (_run) (setq finished t)))))
     (clrhash attest--results)
-    (puthash ghost (list :id ghost :name "test removed since last run"
-                         :status 'failed :type 'test :file file)
-             attest--results)
+    (attest-cache-result (list :id ghost :name "test removed since last run"
+                               :status 'failed :type 'test :file file))
     (with-temp-buffer
       (setq buffer-file-name file)
       (setq default-directory attest-test-fixtures)
