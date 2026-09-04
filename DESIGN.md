@@ -73,6 +73,11 @@ have the same keys. Backends build one selector per target from its
 it. libtest applies `--exact` globally, so cargo drops it when any
 target is a namespace and may over-select.
 
+Selectors carry names, not files, so a `targets` run covering several
+files can also execute a same-named test in another of them. Node and
+vitest filter what they record through `attest-target-result-p`, so an
+over-selected test never reaches the cache; it still runs.
+
 ### Id scheme
 
 `FILE::name::name…`, outermost first. Discovery and the runner build ids

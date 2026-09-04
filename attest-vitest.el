@@ -118,23 +118,12 @@ test below it."
           :env attest-node-env
           :parse-stream 'stderr)))
 
-(defun attest-vitest--wanted-p (run result)
-  "Return non-nil when RESULT is one of RUN's targets, or RUN has none.
+(defun attest-vitest--parse-line (run line)
+  "Parse one reporter LINE from RUN, dropping results outside its targets.
 vitest reports tests excluded by -t as skipped; those must not
 overwrite the cached status of tests that did not run."
-  (or (not (eq (plist-get run :scope) 'targets))
-      (let ((id (plist-get result :id)))
-        (seq-some (lambda (target)
-                    (let ((target-id (plist-get target :id)))
-                      (if (eq (plist-get target :type) 'namespace)
-                          (string-prefix-p (concat target-id attest-id-separator) id)
-                        (equal target-id id))))
-                  (plist-get run :targets)))))
-
-(defun attest-vitest--parse-line (run line)
-  "Parse one reporter LINE from RUN, dropping results outside its targets."
   (when-let* ((result (attest-node--parse-line run line)))
-    (and (attest-vitest--wanted-p run result) result)))
+    (and (attest-target-result-p run result) result)))
 
 (attest-register-backend 'vitest
   :predicate #'attest-vitest--buffer-p
