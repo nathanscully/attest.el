@@ -88,7 +88,9 @@
     (pop-to-buffer (find-file-noselect (plist-get result :file)))
     (goto-char (point-min))
     (forward-line (1- line))
-    (when column (move-to-column (1- column)))))
+    (when column
+      (forward-char (min (1- column)
+                         (- (line-end-position) (point)))))))
 
 (defun attest-list-show-message ()
   "Show the failure message of the result at point."

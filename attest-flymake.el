@@ -38,6 +38,14 @@
 (require 'flymake)
 (require 'attest)
 
+(defcustom attest-flymake-auto-enable-flymake t
+  "Turn on `flymake-mode' when `attest-flymake-mode' is enabled.
+Attest reports through flymake, so without `flymake-mode' nothing is
+shown.  Set to nil to manage `flymake-mode' yourself."
+  :type 'boolean
+  :group 'attest
+  :package-version '(attest . "0.1.0"))
+
 (defvar attest-flymake-mode)
 
 (defun attest-flymake--region (result)
@@ -96,6 +104,24 @@ diagnostics of a backend that merely stops running.")
                              (attest-flymake--message result)
                              result)))
 
+(defun attest-flymake--own-diagnostic-p (diagnostic)
+  "Return non-nil when DIAGNOSTIC came from attest.
+Attest passes the result plist as the diagnostic data, so its own
+entries carry an :id."
+  (let ((data (flymake-diagnostic-data diagnostic)))
+    (and (listp data) (plist-get data :id) t)))
+
+(defun attest-flymake--drop-list-only (file)
+  "Remove only attest\='s list-only diagnostics for FILE.
+`flymake-list-only-diagnostics' is shared, so the entry can hold another
+backend\='s diagnostics; those are put back."
+  (when-let* ((entry (assoc file flymake-list-only-diagnostics)))
+    (let ((keep (seq-remove #'attest-flymake--own-diagnostic-p (cdr entry))))
+      (if keep
+          (setcdr entry keep)
+        (setq flymake-list-only-diagnostics
+              (delq entry flymake-list-only-diagnostics))))))
+
 (defun attest-flymake--refresh (run)
   "Republish diagnostics for every file touched by RUN."
   (let ((files (delete-dups
@@ -103,7 +129,7 @@ diagnostics of a backend that merely stops running.")
                                   (mapcar (lambda (r) (plist-get r :file))
                                           (attest-run-results run)))))))
     (dolist (file files)
-      (setf (alist-get file flymake-list-only-diagnostics nil 'remove #'string=) nil)
+      (attest-flymake--drop-list-only file)
       (if-let* ((buffer (find-buffer-visiting file)))
           (with-current-buffer buffer
             (when (and attest-flymake-mode flymake-mode)
@@ -114,11 +140,15 @@ diagnostics of a backend that merely stops running.")
 
 ;;;###autoload
 (define-minor-mode attest-flymake-mode
-  "Show attest failures as flymake diagnostics in this buffer."
+  "Show attest failures as flymake diagnostics in this buffer.
+Diagnostics appear only while `flymake-mode' is also on; enabling this
+alone is not enough.  See `attest-flymake-auto-enable-flymake'."
   :lighter nil
   (if attest-flymake-mode
       (progn
         (add-hook 'flymake-diagnostic-functions #'attest-flymake-backend nil t)
+        (when (and attest-flymake-auto-enable-flymake (not flymake-mode))
+          (flymake-mode 1))
         (when flymake-mode (flymake-start nil t)))
     (let ((attest-flymake--clearing t))
       (when flymake-mode (flymake-start nil t)))
