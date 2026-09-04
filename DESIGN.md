@@ -55,6 +55,11 @@ Run:
      :command :directory :process :status :result-ids :results :state
      :start-time :end-time :output-buffer)
 
+Starting a run prunes the cache: for every file it covers, cached
+results whose ids discovery no longer lists are dropped, so a deleted
+or renamed test leaves no stale status. Unreadable files are skipped,
+so a transient read failure never clears results.
+
 `:results` maps id to the result RUN itself recorded, so
 `attest-run-results` is unaffected by later runs; `attest--results`
 holds only the latest result for an id. `:position-index` maps a file

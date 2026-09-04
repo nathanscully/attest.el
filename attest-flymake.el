@@ -98,8 +98,10 @@ diagnostics of a backend that merely stops running.")
 
 (defun attest-flymake--refresh (run)
   "Republish diagnostics for every file touched by RUN."
-  (let ((files (delete-dups (mapcar (lambda (r) (plist-get r :file))
-                                    (attest-run-results run)))))
+  (let ((files (delete-dups
+                (delq nil (append (attest-run-files run)
+                                  (mapcar (lambda (r) (plist-get r :file))
+                                          (attest-run-results run)))))))
     (dolist (file files)
       (setf (alist-get file flymake-list-only-diagnostics nil 'remove #'string=) nil)
       (if-let* ((buffer (find-buffer-visiting file)))

@@ -545,6 +545,30 @@ ROOT is the backend's root, which can be a package inside a larger
       (setq attest--progress nil)))
   (force-mode-line-update t))
 
+(defun attest--prune-file (run file)
+  "Drop cached results for FILE that RUN\='s discovery no longer lists.
+Discovery is authoritative: a test deleted or renamed since the last run
+keeps no stale status.  Unreadable files are left alone so a transient
+read failure never clears results."
+  (let ((file (expand-file-name file)))
+    (when (or (find-buffer-visiting file) (file-readable-p file))
+      (let ((known (attest-run-position-table run file))
+            (stale nil))
+        (maphash (lambda (id result)
+                   (when (and (equal (expand-file-name
+                                      (or (plist-get result :file) ""))
+                                     file)
+                              (not (gethash id known)))
+                     (push id stale)))
+                 attest--results)
+        (dolist (id stale) (remhash id attest--results))
+        stale))))
+
+(defun attest--prune-run-scope (run)
+  "Drop cached results RUN's files no longer contain."
+  (dolist (file (attest-run-files run))
+    (attest--prune-file run file)))
+
 (defun attest--make-run (scope &rest props)
   "Build a run plist for SCOPE from the current buffer, merging PROPS."
   (let* ((backend (attest--require-backend))
@@ -700,6 +724,7 @@ otherwise they only go to the output buffer."
              (and buffer-file-name
                   (string-prefix-p root (expand-file-name buffer-file-name)))))))
     (setq attest--last-run run)
+    (attest--prune-run-scope run)
     (attest--progress-start run)
     (run-hook-with-args 'attest-run-started-functions run)
     (condition-case err

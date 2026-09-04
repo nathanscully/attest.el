@@ -157,5 +157,27 @@
     (with-current-buffer attest-output-buffer-name
       (should (string-match-p "fails on purpose" (buffer-string))))))
 
+(ert-deftest attest-node-integration-prunes-stale-results ()
+  "Starting a run drops cached results the file no longer contains."
+  (skip-unless (executable-find attest-node-executable))
+  (let* ((file (attest-test-fixture "demo.test.ts"))
+         (ghost (attest-make-id file "test removed since last run"))
+         (attest-save-before-run nil)
+         (attest-display-output nil)
+         (finished nil)
+         (attest-run-finished-functions (list (lambda (_run) (setq finished t)))))
+    (clrhash attest--results)
+    (puthash ghost (list :id ghost :name "test removed since last run"
+                         :status 'failed :type 'test :file file)
+             attest--results)
+    (with-temp-buffer
+      (setq buffer-file-name file)
+      (setq default-directory attest-test-fixtures)
+      (typescript-ts-mode)
+      (attest-run 'file))
+    (with-timeout (30 (ert-fail "node did not finish"))
+      (while (not finished) (accept-process-output nil 0.1)))
+    (should-not (attest-result ghost))))
+
 (provide 'attest-node-test)
 ;;; attest-node-test.el ends here
