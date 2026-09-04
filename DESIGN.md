@@ -51,9 +51,14 @@ when the runner gives one.
 
 Run:
 
-    (:backend :scope :file :root :targets :files :index
-     :command :directory :process :status :result-ids :state
+    (:backend :scope :file :root :targets :files :index :position-index
+     :command :directory :process :status :result-ids :results :state
      :start-time :end-time :output-buffer)
+
+`:results` maps id to the result RUN itself recorded, so
+`attest-run-results` is unaffected by later runs; `attest--results`
+holds only the latest result for an id. `:position-index` maps a file
+to an id-keyed table of its positions.
 
 `:scope` is `file`, `project` or `targets`. A `targets` run carries
 `:targets`, a list of position plists (`:id`, `:type`, `:file`);

@@ -155,5 +155,43 @@
         (set-buffer-modified-p nil)
         (kill-buffer)))))
 
+(ert-deftest attest-run-results-are-fixed-once-recorded ()
+  "A later run reporting the same id does not change an earlier run."
+  (clrhash attest--results)
+  (let* ((file (attest-test-fixture "demo.test.ts"))
+         (id (attest-make-id file "shared"))
+         (first (list :scope 'file :file file :result-ids nil :results nil))
+         (second (list :scope 'file :file file :result-ids nil :results nil)))
+    (attest--record first (list :id id :name "shared" :status 'failed :type 'test))
+    (should (eq 'failed (plist-get (car (attest-run-results first)) :status)))
+    (attest--record second (list :id id :name "shared" :status 'passed :type 'test))
+    (should (eq 'passed (plist-get (car (attest-run-results second)) :status)))
+    (should (eq 'failed (plist-get (car (attest-run-results first)) :status)))
+    (should (eq 'passed (plist-get (attest-result id) :status)))))
+
+(ert-deftest attest-rerun-failed-uses-the-runs-own-results ()
+  "Rerun-failed selects the failures of the run it was given."
+  (clrhash attest--results)
+  (let* ((file (attest-test-fixture "demo.test.ts"))
+         (id (attest-make-id file "flaky"))
+         (run (list :scope 'file :file file :result-ids nil :results nil)))
+    (attest--record run (list :id id :name "flaky" :status 'failed :type 'test))
+    (let ((later (list :scope 'file :file file :result-ids nil :results nil)))
+      (attest--record later (list :id id :name "flaky" :status 'passed :type 'test)))
+    (should (equal (mapcar (lambda (r) (plist-get r :name))
+                           (attest-run-failed-results run))
+                   '("flaky")))))
+
+(ert-deftest attest-run-position-matches-a-linear-scan ()
+  "The id keyed position table agrees with scanning the position list."
+  (let* ((file (attest-test-fixture "demo.test.ts"))
+         (run (list :backend 'node :scope 'file :file file)))
+    (dolist (pos (attest-run-file-positions run file))
+      (let ((id (plist-get pos :id)))
+        (should (equal (attest-run-position run id)
+                       (seq-find (lambda (p) (equal (plist-get p :id) id))
+                                 (attest-run-file-positions run file))))))
+    (should-not (attest-run-position run (attest-make-id file "no such test")))))
+
 (provide 'attest-consumers-test)
 ;;; attest-consumers-test.el ends here

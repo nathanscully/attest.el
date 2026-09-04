@@ -365,10 +365,24 @@ A `project' run lists its :files, a `targets' run the files of its
   (mapcan (lambda (file) (copy-sequence (attest-run-file-positions run file)))
           (attest-run-files run)))
 
+(defun attest-run-position-table (run file)
+  "Return a hash of id to position for FILE in RUN, built once per file."
+  (let ((tables (or (plist-get run :position-index)
+                    (let ((new (make-hash-table :test 'equal)))
+                      (plist-put run :position-index new)
+                      new)))
+        (file (expand-file-name file)))
+    (let ((cached (gethash file tables 'missing)))
+      (if (eq cached 'missing)
+          (let ((table (make-hash-table :test 'equal)))
+            (dolist (pos (attest-run-file-positions run file))
+              (puthash (plist-get pos :id) pos table))
+            (puthash file table tables))
+        cached))))
+
 (defun attest-run-position (run id)
   "Return the position with ID discovered for RUN, or nil."
-  (seq-find (lambda (pos) (equal (plist-get pos :id) id))
-            (attest-run-file-positions run (attest-id-file id))))
+  (gethash id (attest-run-position-table run (attest-id-file id))))
 
 (defun attest-position-at-point (&optional positions)
   "Return the innermost position in POSITIONS containing point.
@@ -413,10 +427,19 @@ Tests win over namespaces of equal extent.  POSITIONS defaults to
   "Return the most recent run plist."
   attest--last-run)
 
+(defun attest-run-result (run id)
+  "Return the result RUN recorded for ID, or nil.
+Unlike `attest-result' this is fixed once recorded, so a later run
+reporting the same id does not change what RUN returns."
+  (when-let* ((table (plist-get run :results)))
+    (gethash id table)))
+
 (defun attest-run-results (run)
   "Return the results recorded during RUN, in arrival order.
-Ids reported more than once, such as parametrized cases, appear once."
-  (mapcar #'attest-result (delete-dups (reverse (plist-get run :result-ids)))))
+Ids reported more than once, such as parametrized cases, appear once.
+The results are RUN's own, unaffected by later runs."
+  (mapcar (lambda (id) (attest-run-result run id))
+          (delete-dups (reverse (plist-get run :result-ids)))))
 
 (defun attest-run-failed-results (run)
   "Return the failed results of RUN."
@@ -437,6 +460,11 @@ a fallback."
         (plist-put result :type (plist-get pos :type))))
     (unless (plist-get result :type) (plist-put result :type 'test))
     (puthash id result attest--results)
+    (let ((table (or (plist-get run :results)
+                     (let ((new (make-hash-table :test 'equal)))
+                       (plist-put run :results new)
+                       new))))
+      (puthash id result table))
     (plist-put run :result-ids (cons id (plist-get run :result-ids)))
     (run-hook-with-args 'attest-result-functions run result)))
 
@@ -529,6 +557,7 @@ ROOT is the backend's root, which can be a package inside a larger
                   :buffer (current-buffer)
                   :status 'pending
                   :result-ids nil
+                  :results nil
                   :state nil)
             props)))
 
@@ -722,7 +751,7 @@ Recorded results, backend state and the position index are dropped so
 the copy behaves like a first run."
   (attest-kill)
   (let ((copy (copy-sequence run)))
-    (dolist (key '(:result-ids :state :index))
+    (dolist (key '(:result-ids :results :state :index :position-index))
       (plist-put copy key nil))
     (while props
       (plist-put copy (pop props) (pop props)))
