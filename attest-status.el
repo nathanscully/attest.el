@@ -112,7 +112,8 @@
 
 (defun attest-status--on-result (_run result)
   "Mark RESULT in the buffer visiting its file, if any."
-  (when-let* ((buffer (find-buffer-visiting (plist-get result :file))))
+  (when-let* ((file (plist-get result :file))
+              (buffer (find-buffer-visiting file)))
     (with-current-buffer buffer
       (when attest-status-mode
         (attest-status--place result (plist-get result :status))))))
@@ -132,10 +133,7 @@
   "Show attest results in the left fringe of this buffer."
   :lighter nil
   (if attest-status-mode
-      (progn
-        (add-hook 'attest-result-functions #'attest-status--on-result)
-        (add-hook 'attest-run-started-functions #'attest-status--on-start)
-        (attest-status--render-buffer))
+      (attest-status--render-buffer)
     (attest-status--clear)))
 
 (defun attest-status--maybe-enable ()
@@ -147,6 +145,9 @@
 (define-globalized-minor-mode global-attest-status-mode
   attest-status-mode attest-status--maybe-enable
   :group 'attest)
+
+(add-hook 'attest-result-functions #'attest-status--on-result)
+(add-hook 'attest-run-started-functions #'attest-status--on-start)
 
 (provide 'attest-status)
 ;;; attest-status.el ends here

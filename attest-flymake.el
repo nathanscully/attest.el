@@ -119,7 +119,6 @@ diagnostics of a backend that merely stops running.")
   (if attest-flymake-mode
       (progn
         (add-hook 'flymake-diagnostic-functions #'attest-flymake-backend nil t)
-        (add-hook 'attest-run-finished-functions #'attest-flymake--refresh)
         (when flymake-mode (flymake-start nil t)))
     (let ((attest-flymake--clearing t))
       (when flymake-mode (flymake-start nil t)))
@@ -134,6 +133,8 @@ diagnostics of a backend that merely stops running.")
 (define-globalized-minor-mode global-attest-flymake-mode
   attest-flymake-mode attest-flymake--maybe-enable
   :group 'attest)
+
+(add-hook 'attest-run-finished-functions #'attest-flymake--refresh)
 
 (provide 'attest-flymake)
 ;;; attest-flymake.el ends here

@@ -108,6 +108,9 @@ shallower entries.
 
 Consumers subscribe to three hooks and read the shared cache
 `attest--results` (id -> latest result). Core knows nothing about them.
+A consumer registers its hook when the feature loads, not when a buffer
+mode turns on, so cache handling never depends on which buffers happen
+to have the mode enabled; the minor modes own rendering alone.
 
 ## Built-in per feature
 
