@@ -239,5 +239,40 @@
                                    :result-ids nil :results nil))
     (should (attest-result id))))
 
+(ert-deftest attest-consumer-hooks-live-with-the-feature ()
+  "Loading a consumer registers its cache hook, with no mode enabled.
+The buffer modes own rendering only, so hook membership never depends
+on whether some buffer happens to have the mode on."
+  (should (memq #'attest-flymake--refresh attest-run-finished-functions))
+  (should (memq #'attest-status--on-result attest-result-functions))
+  (should (memq #'attest-status--on-start attest-run-started-functions))
+  (let ((file (attest-test-fixture "demo.test.ts")))
+    (with-current-buffer (find-file-noselect file)
+      (unwind-protect
+          (progn
+            (attest-flymake-mode 1)
+            (attest-status-mode 1)
+            (attest-flymake-mode -1)
+            (attest-status-mode -1)
+            (should (memq #'attest-flymake--refresh attest-run-finished-functions))
+            (should (memq #'attest-status--on-result attest-result-functions))
+            (should (memq #'attest-status--on-start attest-run-started-functions)))
+        (set-buffer-modified-p nil)
+        (kill-buffer)))))
+
+(ert-deftest attest-status-mode-off-places-no-markers ()
+  "A buffer with the fringe mode off gets no markers from a result."
+  (let* ((run (attest-consumers-test--load-run))
+         (file (attest-test-fixture "demo.test.ts")))
+    (with-current-buffer (find-file-noselect file)
+      (unwind-protect
+          (progn
+            (attest-status-mode -1)
+            (attest-status--on-result run (car (attest-run-results run)))
+            (should-not (seq-filter (lambda (o) (overlay-get o 'attest-status))
+                                    (overlays-in (point-min) (point-max)))))
+        (set-buffer-modified-p nil)
+        (kill-buffer)))))
+
 (provide 'attest-consumers-test)
 ;;; attest-consumers-test.el ends here
