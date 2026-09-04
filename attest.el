@@ -641,9 +641,11 @@ events call this to surface it."
 
 (defun attest--feed-lines (run key string)
   "Split STRING into lines, buffering a partial line under KEY in RUN.
-Complete lines go to the backend's :parse-line."
+Complete lines go to the backend\='s :parse-line.  A carriage return
+before the newline is dropped so a runner emitting CRLF still parses."
   (let* ((pending (concat (plist-get run key) string))
-         (lines (split-string pending "\n"))
+         (lines (mapcar (lambda (line) (string-remove-suffix "\r" line))
+                        (split-string pending "\n")))
          (parse (plist-get (attest-backend-props (plist-get run :backend))
                            :parse-line)))
     (plist-put run key (car (last lines)))
@@ -675,11 +677,14 @@ cannot stop the run."
 (defun attest--make-filter (run key parse-p)
   "Return a process filter for RUN.
 KEY names the partial-line slot.  When PARSE-P, lines are parsed;
-otherwise they only go to the output buffer."
+otherwise they only go to the output buffer.  Output arriving after RUN
+stopped is dropped, so a late chunk from a killed process cannot reach
+the cache of whatever run replaced it."
   (lambda (_process string)
-    (if parse-p
-        (attest--feed-lines run key string)
-      (attest-append-output run string))))
+    (when (eq (plist-get run :status) 'running)
+      (if parse-p
+          (attest--feed-lines run key string)
+        (attest-append-output run string)))))
 
 (defun attest--finish (run status)
   "Mark RUN finished with STATUS, notify consumers and report a summary."
@@ -689,8 +694,9 @@ otherwise they only go to the output buffer."
   (plist-put run :end-time (float-time))
   (attest--progress-stop run)
   (run-hook-with-args 'attest-run-finished-functions run)
-  (let* ((results (attest-run-results run))
-         (failed (length (attest-run-failed-results run)))
+  (let* ((results (seq-filter (lambda (r) (eq (plist-get r :type) 'test))
+                              (attest-run-results run)))
+         (failed (seq-count (lambda (r) (eq (plist-get r :status) 'failed)) results))
          (passed (seq-count (lambda (r) (eq (plist-get r :status) 'passed)) results))
          (skipped (- (length results) failed passed)))
     (message "attest: %d passed, %d failed, %d skipped (%s in %.1fs)"
@@ -701,13 +707,19 @@ otherwise they only go to the output buffer."
                    (or (> failed 0) (eq status 'error))))
       (display-buffer (plist-get run :output-buffer)))))
 
+(defun attest--drain (run)
+  "Read whatever RUN\='s stderr pipe still holds.
+One `accept-process-output' can return a partial final batch, so read
+until the pipe has nothing left."
+  (when-let* ((stderr (plist-get run :stderr-process)))
+    (while (and (process-live-p stderr)
+                (accept-process-output stderr 0.1)))))
+
 (defun attest--sentinel (run)
   "Return a process sentinel for RUN."
   (lambda (process event)
     (unless (process-live-p process)
-      (let ((stderr (plist-get run :stderr-process)))
-        (when (and stderr (process-live-p stderr))
-          (accept-process-output stderr 0.1)))
+      (attest--drain run)
       (attest--finish
        run
        (cond ((eq (process-status process) 'signal) 'killed)
@@ -747,7 +759,7 @@ otherwise they only go to the output buffer."
       (error
        (attest-append-output run (format "\n%s\n" (error-message-string err)))
        (attest--finish run 'error)
-       (signal (car err) (cdr err))))))
+       (user-error "Attest: %s" (error-message-string err))))))
 
 (defun attest--spawn (run command directory parse-stream)
   "Start COMMAND in DIRECTORY for RUN, parsing PARSE-STREAM.
@@ -757,6 +769,7 @@ Stderr gets its own pipe process so the two streams never interleave."
          (stderr (make-pipe-process
                   :name "attest-stderr"
                   :noquery t
+                  :coding 'utf-8
                   :filter (attest--make-filter run :partial-stderr
                                                 (eq parse-stream 'stderr))
                   :sentinel #'ignore))
@@ -765,6 +778,7 @@ Stderr gets its own pipe process so the two streams never interleave."
                    :command command
                    :noquery t
                    :connection-type 'pipe
+                   :coding 'utf-8
                    :stderr stderr
                    :filter (attest--make-filter run :partial-stdout
                                                  (eq parse-stream 'stdout))
@@ -846,7 +860,11 @@ the copy behaves like a first run."
     (when (process-live-p process)
       (set-process-sentinel process #'ignore)
       (delete-process process)
-      (attest--finish run 'killed))))
+      (attest--drain run)
+      (attest--finish run 'killed)
+      (when-let* ((stderr (plist-get run :stderr-process)))
+        (when (process-live-p stderr)
+          (delete-process stderr))))))
 
 ;;;###autoload
 (defun attest-show-output ()
