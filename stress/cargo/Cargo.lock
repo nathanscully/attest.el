@@ -5,7 +5,14 @@ version = 4
 [[package]]
 name = "alpha"
 version = "0.1.0"
+dependencies = [
+ "harness",
+]
 
 [[package]]
 name = "beta"
+version = "0.1.0"
+
+[[package]]
+name = "harness"
 version = "0.1.0"

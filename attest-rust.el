@@ -53,6 +53,18 @@
   :type '(repeat string)
   :package-version '(attest . "0.1.0"))
 
+(defcustom attest-rust-environment '("RUSTC_BOOTSTRAP=1")
+  "Environment entries added to `cargo test'.
+The libtest JSON stream this backend reads sits behind
+`-Z unstable-options', which a stable rustc only accepts when
+RUSTC_BOOTSTRAP=1 is set.  That variable unlocks every unstable rustc
+feature for the crate being built, not just this one, and some
+organisations ban it outright.  On a nightly toolchain the switch needs
+no such override, so set this to nil and put the toolchain selection in
+`attest-rust-cargo-args', for example \='(\"+nightly\")."
+  :type '(repeat string)
+  :package-version '(attest . "0.1.0"))
+
 (defconst attest-rust--query
   '(((mod_item name: (identifier) @namespace.name body: (declaration_list)) @namespace.definition)
     ((attribute_item (attribute) @attr)
@@ -60,8 +72,10 @@
      (attribute_item) :*
      :anchor
      (function_item name: (identifier) @test.name) @test.definition
-     (:match "\\`\\(?:[a-z_]+::\\)?test\\'" @attr)))
-  "Query matching `mod' blocks and functions carrying a test attribute.")
+     (:match "\\`\\(?:[a-z_]+::\\)?test\\(?:\\'\\|(\\)" @attr)))
+  "Query matching `mod' blocks and functions carrying a test attribute.
+The attribute may be namespaced and may carry arguments, so both
+`tokio::test' and `tokio::test(flavor = \"multi_thread\")' match.")
 
 (defun attest-rust-root (file)
   "Return the directory of the nearest Cargo.toml at or above FILE."
@@ -111,6 +125,25 @@ Crate roots and integration test files map to the empty string."
         (puthash (attest-rust--full-name pos root) pos table)))
     table))
 
+(defun attest-rust--file-selector (file root)
+  "Return the cargo target arguments building the tests in FILE at ROOT.
+A crate root or module file compiles into the library and the binaries;
+a file under tests/ is an integration test target of its own name."
+  (let ((parts (split-string (file-name-sans-extension (file-relative-name file root)) "/" t)))
+    (pcase parts
+      (`("tests" ,name) (list "--test" name))
+      (`("src" . ,_) (list "--lib" "--bins"))
+      (_ nil))))
+
+(defun attest-rust--file-filters (file root)
+  "Return libtest filter arguments selecting the tests of FILE at ROOT.
+A module file is selected by its module path with a trailing separator,
+so a module named `scanner' does not also match `scanner_other'.  Crate
+roots and integration test files have no prefix; the cargo target
+arguments narrow those instead."
+  (let ((prefix (attest-rust-module-prefix file root)))
+    (unless (string-empty-p prefix) (list (concat prefix "::")))))
+
 (defun attest-rust--target-filters (targets root)
   "Return libtest filter arguments selecting TARGETS in the crate at ROOT.
 Tests are matched with --exact.  libtest applies --exact to every
@@ -126,19 +159,21 @@ and may select more tests than asked for."
   (let* ((root (plist-get run :root))
          (scope (plist-get run :scope))
          (index (attest-rust--index run))
+         (file (plist-get run :file))
+         (selector (and (eq scope 'file) (attest-rust--file-selector file root)))
          (filters
           (pcase scope
             ('targets (attest-rust--target-filters (plist-get run :targets) root))
-            ('file (let ((prefix (attest-rust-module-prefix (plist-get run :file) root)))
-                     (and (not (string-empty-p prefix)) (list prefix)))))))
+            ('file (attest-rust--file-filters file root)))))
     (plist-put run :state (list :index index))
     (list :command (append (list attest-rust-cargo-executable "test" "-q" "--no-fail-fast")
+                           selector
                            attest-rust-cargo-args
                            (list "--")
                            filters
                            (list "-Z" "unstable-options" "--format=json" "--report-time"))
           :directory root
-          :env '("RUSTC_BOOTSTRAP=1")
+          :env attest-rust-environment
           :parse-stream 'stdout)))
 
 (defun attest-rust--panic-location (stdout run file)
@@ -152,13 +187,14 @@ Paths in STDOUT are relative to RUN's directory."
             (string-to-number (match-string 3 stdout))))))
 
 (defun attest-rust--result (run event)
-  "Return a result for a libtest test EVENT in RUN."
+  "Return a result for a libtest test EVENT in RUN.
+Returns nil when the run\='s index does not know the test, since cargo
+selects tests by name over whole targets and reports names this run did
+not ask for."
   (let* ((name (alist-get 'name event))
          (position (gethash name (plist-get (plist-get run :state) :index)))
-         (file (or (plist-get position :file) (plist-get run :file)))
-         (names (if position
-                    (attest-rust--position-names position)
-                  (split-string name "::")))
+         (file (plist-get position :file))
+         (names (and position (attest-rust--position-names position)))
          (status (pcase (alist-get 'event event)
                    ("ok" 'passed)
                    ("failed" 'failed)
@@ -166,15 +202,16 @@ Paths in STDOUT are relative to RUN's directory."
          (stdout (alist-get 'stdout event)))
     (when (and stdout (not (string-empty-p stdout)))
       (attest-append-output run (concat stdout "\n")))
-    (append (list :id (apply #'attest-make-id file names)
-                  :type 'test
-                  :name (car (last names))
-                  :status status
-                  :file file
-                  :duration (when-let* ((s (alist-get 'exec_time event))) (* 1000 s)))
-            (when (eq status 'failed)
-              (list :message (or (and stdout (string-trim stdout)) "test failed")
-                    :location (attest-rust--panic-location stdout run file))))))
+    (when position
+      (append (list :id (apply #'attest-make-id file names)
+                    :type 'test
+                    :name (car (last names))
+                    :status status
+                    :file file
+                    :duration (when-let* ((s (alist-get 'exec_time event))) (* 1000 s)))
+              (when (eq status 'failed)
+                (list :message (or (and stdout (string-trim stdout)) "test failed")
+                      :location (attest-rust--panic-location stdout run file)))))))
 
 (defun attest-rust--doctest-p (name)
   "Return non-nil when libtest NAME denotes a doc test.

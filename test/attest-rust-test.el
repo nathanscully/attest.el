@@ -64,8 +64,10 @@
       (should (string-match-p "x should be three" (plist-get fail :message))))))
 
 (ert-deftest attest-rust-drops-doc-tests ()
-  (let ((run (list :backend 'rust :scope 'file :state (list :index (make-hash-table :test 'equal))
-                   :root attest-rust-test--root :file attest-rust-test--lib)))
+  (skip-unless (treesit-language-available-p 'rust))
+  (let ((run (list :backend 'rust :scope 'file :root attest-rust-test--root
+                   :file attest-rust-test--lib)))
+    (attest-rust--command run)
     (should-not (attest-rust--parse-line
                  run "{\"type\":\"test\",\"event\":\"ok\",\"name\":\"src/lib.rs - add (line 7)\"}"))
     (should (attest-rust--parse-line
@@ -75,7 +77,7 @@
   (skip-unless (treesit-language-available-p 'rust))
   (let* ((base (list :backend 'rust :root attest-rust-test--root :file attest-rust-test--scanner))
          (argv (lambda (props) (plist-get (attest-rust--command (append base props)) :command))))
-    (should (member "scanner" (funcall argv '(:scope file))))
+    (should (member "scanner::" (funcall argv '(:scope file))))
     (should-not (member "src" (funcall argv (list :scope 'file :file attest-rust-test--lib))))
     (let ((cmd (funcall argv (list :scope 'targets
                                    :targets (list (list :id (attest-make-id attest-rust-test--scanner "tests" "counts_words")
@@ -87,7 +89,41 @@
                                                         :file attest-rust-test--scanner :type 'namespace))))))
       (should (equal (seq-take (seq-drop-while (lambda (a) (not (equal a "--"))) cmd) 2)
                      '("--" "scanner::tests"))))
-    (should (member "RUSTC_BOOTSTRAP=1" (plist-get (attest-rust--command (append base '(:scope file))) :env)))))
+    (should (equal (plist-get (attest-rust--command (append base '(:scope file))) :env)
+                   attest-rust-environment))))
+
+(ert-deftest attest-rust-file-scope-filters-by-module-with-separator ()
+  (skip-unless (treesit-language-available-p 'rust))
+  (let ((filters (attest-rust--file-filters attest-rust-test--scanner attest-rust-test--root)))
+    (should (equal filters '("scanner::")))
+    (should-not (member "scanner" filters))))
+
+(ert-deftest attest-rust-file-scope-selects-cargo-target ()
+  (let ((root "/crate/"))
+    (should (equal (attest-rust--file-selector "/crate/src/lib.rs" root) '("--lib" "--bins")))
+    (should (equal (attest-rust--file-selector "/crate/src/main.rs" root) '("--lib" "--bins")))
+    (should (equal (attest-rust--file-selector "/crate/src/scanner.rs" root) '("--lib" "--bins")))
+    (should (equal (attest-rust--file-selector "/crate/tests/it.rs" root) '("--test" "it")))))
+
+(ert-deftest attest-rust-crate-root-file-scope-narrows-to-lib-and-bins ()
+  (skip-unless (treesit-language-available-p 'rust))
+  (let* ((run (list :backend 'rust :scope 'file :root attest-rust-test--root
+                    :file attest-rust-test--lib))
+         (cmd (plist-get (attest-rust--command run) :command)))
+    (should (member "--lib" cmd))
+    (should (member "--bins" cmd))
+    (should (equal (seq-drop-while (lambda (a) (not (equal a "--"))) cmd)
+                   '("--" "-Z" "unstable-options" "--format=json" "--report-time")))))
+
+(ert-deftest attest-rust-drops-events-outside-the-run-index ()
+  (skip-unless (treesit-language-available-p 'rust))
+  (let ((run (list :backend 'rust :scope 'file :root attest-rust-test--root
+                   :file attest-rust-test--lib)))
+    (attest-rust--command run)
+    (should (attest-rust--parse-line
+             run "{\"type\":\"test\",\"event\":\"ok\",\"name\":\"tests::adds\"}"))
+    (should-not (attest-rust--parse-line
+                 run "{\"type\":\"test\",\"event\":\"ok\",\"name\":\"scanner::tests::counts_words\"}"))))
 
 (ert-deftest attest-rust-integration-runs-fixture-crate ()
   (skip-unless (executable-find attest-rust-cargo-executable))
@@ -98,19 +134,43 @@
          (attest-result-functions (list (lambda (_run r) (push r results))))
          (attest-run-finished-functions (list (lambda (_run) (setq finished t)))))
     (with-temp-buffer
+      (insert-file-contents attest-rust-test--lib)
       (setq buffer-file-name attest-rust-test--lib)
       (setq default-directory attest-rust-test--root)
       (rust-ts-mode)
       (attest-run 'file))
     (with-timeout (120 (ert-fail "cargo did not finish"))
       (while (not finished) (accept-process-output nil 0.1)))
-    (should (= (length results) 5))
+    (should (equal (sort (mapcar (lambda (r) (plist-get r :name)) results) #'string<)
+                   '("adds" "fails_on_purpose" "ignored_one" "panics")))
+    (dolist (r results)
+      (should (equal (plist-get r :file) attest-rust-test--lib)))
     (let ((fail (seq-find (lambda (r) (equal (plist-get r :name) "fails_on_purpose")) results)))
       (should (eq (plist-get fail :status) 'failed))
       (should (equal (plist-get fail :file) attest-rust-test--lib))
       (should (equal (plist-get fail :location) '(19 . 9))))
     (with-current-buffer attest-output-buffer-name
       (should (string-match-p "panicked at src/lib.rs:19:9" (buffer-string))))))
+
+(ert-deftest attest-rust-integration-file-scope-excludes-sibling-module ()
+  (skip-unless (executable-find attest-rust-cargo-executable))
+  (skip-unless (treesit-language-available-p 'rust))
+  (let* ((attest-save-before-run nil)
+         (attest-display-output nil)
+         (results nil) (finished nil)
+         (attest-result-functions (list (lambda (_run r) (push r results))))
+         (attest-run-finished-functions (list (lambda (_run) (setq finished t)))))
+    (with-temp-buffer
+      (insert-file-contents attest-rust-test--scanner)
+      (setq buffer-file-name attest-rust-test--scanner)
+      (setq default-directory attest-rust-test--root)
+      (rust-ts-mode)
+      (attest-run 'file))
+    (with-timeout (120 (ert-fail "cargo did not finish"))
+      (while (not finished) (accept-process-output nil 0.1)))
+    (should (equal (mapcar (lambda (r) (plist-get r :id)) results)
+                   (list (attest-make-id attest-rust-test--scanner "tests" "counts_words"))))
+    (should-not (member "scanner" (plist-get (attest-last-run) :command)))))
 
 (provide 'attest-rust-test)
 ;;; attest-rust-test.el ends here

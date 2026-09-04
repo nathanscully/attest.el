@@ -1,4 +1,5 @@
 pub mod a;
+pub mod attrs;
 pub mod bulk;
 pub mod many;
 
