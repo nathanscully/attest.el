@@ -19,7 +19,7 @@
   "Replay the recorded reporter events."
   (let ((run (list :backend 'vitest :scope 'file :root attest-vitest-test--root
                    :directory attest-vitest-test--root :state nil)))
-    (delq nil (mapcar (lambda (l) (attest-vitest--parse-line run l))
+    (delq nil (mapcar (lambda (l) (attest-node-parse-scoped-line run l))
                       (attest-test-fixture-lines "vitest-events.jsonl")))))
 
 (ert-deftest attest-vitest-parses-states ()
@@ -56,13 +56,13 @@
   (let* ((target (attest-make-id attest-vitest-test--file "math" "adds"))
          (run (list :backend 'vitest :scope 'targets :root attest-vitest-test--root
                     :targets (list (list :id target :type 'test))))
-         (results (delq nil (mapcar (lambda (l) (attest-vitest--parse-line run l))
+         (results (delq nil (mapcar (lambda (l) (attest-node-parse-scoped-line run l))
                                     (attest-test-fixture-lines "vitest-events.jsonl")))))
     (should (equal (mapcar (lambda (r) (plist-get r :id)) results) (list target))))
   (let* ((ns (attest-make-id attest-vitest-test--file "math" "nested"))
          (run (list :backend 'vitest :scope 'targets :root attest-vitest-test--root
                     :targets (list (list :id ns :type 'namespace))))
-         (results (delq nil (mapcar (lambda (l) (attest-vitest--parse-line run l))
+         (results (delq nil (mapcar (lambda (l) (attest-node-parse-scoped-line run l))
                                     (attest-test-fixture-lines "vitest-events.jsonl")))))
     (should (equal (mapcar (lambda (r) (plist-get r :name)) results)
                    '("deep passes" "skipped one" "todo one")))))
@@ -117,6 +117,90 @@
       (should (equal (plist-get fail :location) '(9 . 15))))
     (with-current-buffer attest-output-buffer-name
       (should (string-match-p "Failed Tests 2" (buffer-string))))))
+
+(ert-deftest attest-vitest-file-dispatch-needs-vitest-binary ()
+  "File dispatch follows the same rule as buffer dispatch.
+Node and vitest name test files identically, so only the presence of a
+vitest binary tells them apart.  vitest registers after node, and
+`attest-backend-for-file' takes the first backend that claims a file,
+so a vitest :test-file-p that ignored the binary would claim every
+node:test file too."
+  (skip-unless (file-executable-p (expand-file-name "node_modules/.bin/vitest"
+                                                    attest-vitest-test--root)))
+  (let ((attest--backends (seq-filter (lambda (entry) (memq (car entry) '(node vitest)))
+                                      attest--backends)))
+    (should (attest-vitest-test-file-p attest-vitest-test--file))
+    (should-not (attest-vitest-test-file-p (attest-test-fixture "demo.test.ts")))
+    (should (eq (attest-backend-for-file attest-vitest-test--file) 'vitest))
+    (should (eq (attest-backend-for-file (attest-test-fixture "demo.test.ts")) 'node))))
+
+(ert-deftest attest-vitest-command-unsets-node-options ()
+  "The vitest command spec removes NODE_OPTIONS from the child environment."
+  (skip-unless (file-executable-p (expand-file-name "node_modules/.bin/vitest"
+                                                    attest-vitest-test--root)))
+  (let* ((spec (attest-vitest--command
+                (list :backend 'vitest :scope 'file :root attest-vitest-test--root
+                      :file attest-vitest-test--file)))
+         (process-environment (append (plist-get spec :env)
+                                      (list "NODE_OPTIONS=--require=/breaks/it"))))
+    (should (member "NODE_OPTIONS" (plist-get spec :env)))
+    (should-not (getenv "NODE_OPTIONS"))))
+
+(ert-deftest attest-vitest-registers-the-shared-parser ()
+  "Both backends parse through `attest-node-parse-scoped-line'.
+The two reporters emit the same event shape, so one scoped parser
+serves both; vitest only adds its `.only' filter on top of it."
+  (should (eq (plist-get (attest-backend-props 'node) :parse-line)
+              #'attest-node-parse-scoped-line))
+  (should (eq (plist-get (attest-backend-props 'vitest) :parse-line)
+              #'attest-vitest-parse-line))
+  (let* ((run (list :backend 'vitest :scope 'targets
+                    :root attest-vitest-test--root
+                    :file attest-vitest-test--file :state nil
+                    :targets (list (list :id (attest-make-id attest-vitest-test--file
+                                                             "math" "adds")
+                                         :type 'test))))
+         (line (car (attest-test-fixture-lines "vitest-events.jsonl"))))
+    (should (equal (attest-vitest-parse-line run line)
+                   (attest-node-parse-scoped-line run line)))))
+
+(defconst attest-vitest-test--only-file
+  (attest-test-fixture "vitest/src/only.test.ts")
+  "Fixture whose suite uses `.only\=', recorded in vitest-only-events.jsonl.")
+
+(ert-deftest attest-vitest-only-runs-record-nothing-skipped ()
+  "A file-scope run of a file using `.only\=' records only what ran.
+vitest rewrites the mode of every test `.only\=' excludes to `skip\='
+before any reporter sees it, so an excluded test cannot be told apart
+from an author-written `test.skip\='.  Recording them as skipped would
+overwrite the cached status of tests that never ran, so a run whose
+files declare `.only\=' drops every skipped result."
+  (let* ((run (list :backend 'vitest :scope 'file
+                    :root attest-vitest-test--root
+                    :file attest-vitest-test--only-file :state nil))
+         (results (delq nil (mapcar (lambda (l) (attest-vitest-parse-line run l))
+                                    (attest-test-fixture-lines
+                                     "vitest-only-events.jsonl")))))
+    (should (equal (mapcar (lambda (r) (plist-get r :name)) results)
+                   '("the only one")))))
+
+(ert-deftest attest-vitest-runs-without-only-keep-skipped-results ()
+  "A run over files with no `.only\=' still records genuine skips.
+Dropping skipped results is specific to the `.only\=' case; a plain run
+must keep `test.skip\=' and `test.todo\=' so they show as skipped."
+  (let* ((run (list :backend 'vitest :scope 'file
+                    :root attest-vitest-test--root
+                    :file attest-vitest-test--file :state nil))
+         (results (delq nil (mapcar (lambda (l) (attest-vitest-parse-line run l))
+                                    (attest-test-fixture-lines
+                                     "vitest-events.jsonl")))))
+    (should (equal (mapcar (lambda (r) (plist-get r :status)) results)
+                   '(passed failed passed skipped todo passed failed)))))
+
+(ert-deftest attest-vitest-only-detection-reads-the-source ()
+  "Only a file that declares `.only\=' is treated as an only run."
+  (should (attest-vitest--only-file-p attest-vitest-test--only-file))
+  (should-not (attest-vitest--only-file-p attest-vitest-test--file)))
 
 (provide 'attest-vitest-test)
 ;;; attest-vitest-test.el ends here

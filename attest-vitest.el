@@ -26,14 +26,14 @@
 ;; Runs vitest with the bundled attest-vitest-reporter.mjs alongside
 ;; the default reporter.  The custom reporter writes one `attest:test'
 ;; JSON line per test case to stderr, the same shape the node reporter
-;; emits, so parsing is `attest-node--parse-line'; vitest's own output
-;; stays on stdout.
+;; emits, so parsing is `attest-node-parse-scoped-line'; vitest's own
+;; output stays on stdout.
 ;;
 ;; Discovery reuses the node backend's query: vitest and node:test
 ;; declare tests the same way.  This file requires attest-node so it
-;; registers after it, and its predicate only claims buffers whose
-;; package has a vitest binary, so plain node:test projects still go to
-;; the node backend.
+;; registers after it, and both its predicate and its :test-file-p only
+;; claim files whose package has a vitest binary, so plain node:test
+;; projects still go to the node backend.
 
 ;;; Code:
 
@@ -75,10 +75,21 @@ When nil, the nearest node_modules/.bin/vitest above the file is used."
                        (attest-vitest--bin-dir file))))
     (expand-file-name dir)))
 
+(defun attest-vitest-test-file-p (file)
+  "Return non-nil when FILE is a test file in a package that has vitest.
+Node and vitest declare tests identically, so the name alone cannot
+tell them apart; only the presence of a vitest binary above FILE can.
+Without this, file dispatch would hand every node:test file to vitest,
+because vitest registers after node and `attest-backend-for-file'
+takes the first backend that claims the file."
+  (and (attest-node-test-file-p file)
+       (attest-vitest--bin-dir file)
+       t))
+
 (defun attest-vitest--buffer-p ()
   "Return non-nil for a JavaScript or TypeScript test buffer in a vitest package."
   (and (attest-node--buffer-p)
-       (attest-vitest--bin-dir buffer-file-name)))
+       (attest-vitest-test-file-p buffer-file-name)))
 
 (defun attest-vitest--program (root)
   "Return the vitest command list for a run rooted at ROOT."
@@ -115,23 +126,58 @@ test below it."
                            (and pattern (list "-t" pattern))
                            (mapcar (lambda (f) (file-relative-name f root)) files))
           :directory root
-          :env attest-node-env
+          :env (attest-node-env)
           :parse-stream 'stderr)))
 
-(defun attest-vitest--parse-line (run line)
-  "Parse one reporter LINE from RUN, dropping results outside its targets.
-vitest reports tests excluded by -t as skipped; those must not
-overwrite the cached status of tests that did not run."
-  (when-let* ((result (attest-node--parse-line run line)))
-    (and (attest-target-result-p run result) result)))
+(defconst attest-vitest--only-regexp
+  "\\_<\\(?:describe\\|suite\\|test\\|it\\)\\.only\\_>"
+  "Regexp matching a `.only\=' declaration in a JavaScript or TypeScript file.")
+
+(defun attest-vitest--only-file-p (file)
+  "Return non-nil when FILE declares a test or suite with `.only\='."
+  (let ((buffer (find-buffer-visiting file)))
+    (cond
+     (buffer (with-current-buffer buffer
+               (save-excursion
+                 (goto-char (point-min))
+                 (re-search-forward attest-vitest--only-regexp nil t))))
+     ((file-readable-p file)
+      (with-temp-buffer
+        (insert-file-contents file)
+        (goto-char (point-min))
+        (re-search-forward attest-vitest--only-regexp nil t))))))
+
+(defun attest-vitest--run-has-only-p (run)
+  "Return non-nil when any file RUN covers declares `.only\='.
+Computed once per run and kept under :vitest-only."
+  (let ((cached (plist-get run :vitest-only)))
+    (if cached
+        (eq cached 'yes)
+      (let ((found (and (seq-some #'attest-vitest--only-file-p (attest-run-files run))
+                        t)))
+        (plist-put run :vitest-only (if found 'yes 'no))
+        found))))
+
+(defun attest-vitest-parse-line (run line)
+  "Parse one reporter LINE from RUN into a result or nil.
+Drops results outside RUN\='s targets, and on a run whose files declare
+`.only\=', drops skipped results too.  vitest rewrites the mode of every
+test `.only\=' excludes to `skip\=' before any reporter sees it, so an
+excluded test is indistinguishable from one the author wrote as
+`test.skip\='.  Recording those would overwrite the cached status of
+tests that did not run; leaving them out keeps the last real status."
+  (when-let* ((result (attest-node-parse-scoped-line run line)))
+    (unless (and (memq (plist-get result :status) '(skipped todo))
+                 (attest-vitest--run-has-only-p run))
+      result)))
 
 (attest-register-backend 'vitest
   :predicate #'attest-vitest--buffer-p
-  :test-file-p #'attest-node-test-file-p
+  :test-file-p #'attest-vitest-test-file-p
   :root #'attest-vitest-root
   :query #'attest-node--query
   :command #'attest-vitest--command
-  :parse-line #'attest-vitest--parse-line)
+  :parse-line #'attest-vitest-parse-line)
 
 (provide 'attest-vitest)
 ;;; attest-vitest.el ends here
