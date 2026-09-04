@@ -545,6 +545,21 @@ ROOT is the backend's root, which can be a package inside a larger
       (setq attest--progress nil)))
   (force-mode-line-update t))
 
+(defun attest-target-result-p (run result)
+  "Return non-nil when RESULT belongs to RUN\='s targets.
+Always true for a run without targets.  A namespace target claims every
+result below it.  Runners select targets by name, so a `targets' run
+over several files can execute a same-named test in another file; this
+keeps those out of the cache."
+  (or (not (eq (plist-get run :scope) 'targets))
+      (let ((id (plist-get result :id)))
+        (seq-some (lambda (target)
+                    (let ((target-id (plist-get target :id)))
+                      (if (eq (plist-get target :type) 'namespace)
+                          (string-prefix-p (concat target-id attest-id-separator) id)
+                        (equal target-id id))))
+                  (plist-get run :targets)))))
+
 (defun attest--prune-file (run file)
   "Drop cached results for FILE that RUN\='s discovery no longer lists.
 Discovery is authoritative: a test deleted or renamed since the last run

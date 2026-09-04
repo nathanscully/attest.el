@@ -209,13 +209,20 @@ Lines that are not JSON, such as syntax errors, go to the output."
     (attest-append-output run (concat line "\n"))
     nil))
 
+(defun attest-node--parse-target-line (run line)
+  "Parse LINE from RUN, dropping results outside its targets.
+`--test-name-pattern' selects by name, so a targets run covering more
+than one file can also execute a same-named test elsewhere."
+  (when-let* ((result (attest-node--parse-line run line)))
+    (and (attest-target-result-p run result) result)))
+
 (attest-register-backend 'node
   :predicate #'attest-node--buffer-p
   :test-file-p #'attest-node-test-file-p
   :root #'attest-node-root
   :query #'attest-node--query
   :command #'attest-node--command
-  :parse-line #'attest-node--parse-line)
+  :parse-line #'attest-node--parse-target-line)
 
 (provide 'attest-node)
 ;;; attest-node.el ends here

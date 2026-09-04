@@ -179,5 +179,57 @@
       (while (not finished) (accept-process-output nil 0.1)))
     (should-not (attest-result ghost))))
 
+(ert-deftest attest-node-targets-drop-same-name-in-other-files ()
+  "A targets run keeps only results from the files it targeted.
+`--test-name-pattern' matches by name, so a same-named test in another
+file of the same run must not reach the cache."
+  (let* ((wanted (attest-test-fixture "demo.test.ts"))
+         (other (attest-test-fixture "other.test.ts"))
+         (run (list :backend 'node :scope 'targets
+                    :targets (list (list :id (attest-make-id wanted "throws")
+                                         :type 'test :file wanted)))))
+    (should (attest-target-result-p
+             run (list :id (attest-make-id wanted "throws"))))
+    (should-not (attest-target-result-p
+                 run (list :id (attest-make-id other "throws"))))))
+
+(ert-deftest attest-node-namespace-target-claims-its-subtree ()
+  "A namespace target keeps its own tests and nothing from other files."
+  (let* ((wanted (attest-test-fixture "demo.test.ts"))
+         (other (attest-test-fixture "other.test.ts"))
+         (run (list :backend 'node :scope 'targets
+                    :targets (list (list :id (attest-make-id wanted "math")
+                                         :type 'namespace :file wanted)))))
+    (should (attest-target-result-p
+             run (list :id (attest-make-id wanted "math" "adds"))))
+    (should-not (attest-target-result-p
+                 run (list :id (attest-make-id other "math" "adds"))))
+    (should-not (attest-target-result-p
+                 run (list :id (attest-make-id wanted "other test"))))))
+
+(ert-deftest attest-node-non-target-runs-keep-every-result ()
+  "File and project runs record everything the runner reports."
+  (let ((run (list :backend 'node :scope 'file
+                   :file (attest-test-fixture "demo.test.ts"))))
+    (should (attest-target-result-p
+             run (list :id (attest-make-id "/anywhere.test.ts" "anything"))))))
+
+(ert-deftest attest-node-backend-filters-results-by-target ()
+  "The registered node parser drops results outside the run's targets."
+  (let* ((wanted (attest-test-fixture "demo.test.ts"))
+         (other (attest-test-fixture "other.test.ts"))
+         (parse (plist-get (attest-backend-props 'node) :parse-line))
+         (run (list :backend 'node :scope 'targets
+                    :targets (list (list :id (attest-make-id wanted "throws")
+                                         :type 'test :file wanted))))
+         (line (lambda (file)
+                 (json-serialize
+                  (list :type "attest:test" :kind "test"
+                        :names (vector "throws") :file file
+                        :location (list :line 20 :column 1)
+                        :state "passed" :errors [])))))
+    (should (funcall parse run (funcall line wanted)))
+    (should-not (funcall parse run (funcall line other)))))
+
 (provide 'attest-node-test)
 ;;; attest-node-test.el ends here
