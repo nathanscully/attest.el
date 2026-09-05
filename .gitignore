@@ -7,3 +7,4 @@ target/
 .direnv/
 result
 logs/
+attest-autoloads.el

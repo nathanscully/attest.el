@@ -116,5 +116,16 @@
             (should-error (attest--require-backend) :type 'user-error)))
       (delete-directory dir t))))
 
+(ert-deftest attest-all-registers-every-bundled-backend ()
+  "Loading attest-all brings up all four backends, vitest before node."
+  (require 'attest-all)
+  (let ((names (mapcar #'car attest--backends)))
+    (dolist (backend '(node vitest rust pytest))
+      (should (memq backend names)))
+    (should (< (seq-position names 'vitest) (seq-position names 'node))))
+  (dolist (feature '(attest attest-node attest-vitest attest-rust attest-pytest
+                           attest-flymake attest-status attest-list))
+    (should (featurep feature))))
+
 (provide 'attest-cache-test)
 ;;; attest-cache-test.el ends here

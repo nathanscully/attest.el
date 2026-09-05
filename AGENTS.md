@@ -11,8 +11,8 @@ Read in this order before changing anything:
    built-in provides each feature, what is deliberately not built.
 2. `ASSESSMENT.md`: what works, where the built-ins thesis strains,
    the tree-sitter decision, comparison with verdict and test-cockpit.
-3. `attest.el`: the core, 685 lines. Everything else is a backend or a
-   consumer of it.
+3. `attest.el`: the core. Everything else is a backend or a consumer of
+   it.
 
 ## Layout
 
@@ -21,9 +21,10 @@ Read in this order before changing anything:
 | `attest.el` | registry, ids, discovery + per-run position index, process runner, result cache, commands |
 | `attest-node.el` + `attest-node-reporter.mjs` | node:test backend; reporter tracks nesting and emits `attest:test` events on stderr |
 | `attest-vitest.el` + `attest-vitest-reporter.mjs` | vitest backend; same event shape, reuses the node query and parser; registers after node |
-| `attest-rust.el` | cargo test via libtest JSON (`RUSTC_BOOTSTRAP=1`); maps names through the core index |
+| `attest-rust.el` | cargo test via libtest JSON (`attest-rust-environment` sets `RUSTC_BOOTSTRAP=1`); maps names through the core index |
 | `attest-pytest.el` + `attest_pytest.py` | pytest backend; plugin loaded with `-p`, JSON on stderr |
 | `attest-flymake.el`, `attest-status.el`, `attest-list.el` | consumers; subscribe to hooks, read `attest--results` |
+| `attest-all.el` | one entry point that requires the core, all backends and all consumers |
 | `test/` | ert tests; parser tests replay `test/fixtures/*-events.jsonl`, one integration test per runner |
 | `stress/` | one real project per runner (`node`, `vitest`, `cargo`, `pytest`); `test/attest-stress-test.el` runs them via `make stress` |
 | `flake.nix` | dev shell and `nix flake check`; pins Emacs, grammars and runners |
@@ -117,7 +118,7 @@ the files from this directory, disable side effects, run, inspect:
 ```elisp
 (progn
   (dolist (f '("attest" "attest-node" "attest-flymake" "attest-status" "attest-list"))
-    (load (expand-file-name (concat f ".el") "~/projects/attest.el/") nil t))
+    (load (expand-file-name (concat f ".el") "~/projects/attest/") nil t))
   (setq attest-save-before-run nil attest-display-output nil))
 ```
 
@@ -130,8 +131,11 @@ inside the same form you inspect from; it changes the current buffer.
 
 - Rust project scope parses every `src/` and `tests/` file synchronously
   before cargo starts (6.0 ms per file measured on `stress/cargo`).
-- vitest reports `-t`-excluded tests as skipped; `attest-vitest--wanted-p`
-  filters them to the run's scope.
+- vitest reports `-t`-excluded tests as skipped; `attest-target-result-p`
+  in core filters them to the run's scope. A `.only` in a file or project
+  run is detected from the source, since vitest rewrites the mode during
+  collection and no reporter hook can tell an excluded test from a
+  `test.skip`.
 - No `test.each`, `describe.each`, or computed-name handling; `stress/*/dynamic*` files track it.
 - node reports nothing for tests inside `describe.skip`; discovery still lists them.
 - `logs/` in this directory belongs to another tool and is not tracked.
