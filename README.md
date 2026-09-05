@@ -17,18 +17,17 @@ you run a test in it. Install the grammars before first use; see
 
 ```elisp
 (add-to-list 'load-path "~/projects/attest")
-(require 'attest)
-(require 'attest-node)
-(require 'attest-vitest)
-(require 'attest-rust)
-(require 'attest-pytest)
-(require 'attest-flymake)
-(require 'attest-status)
-(require 'attest-list)
+(require 'attest-all)
 (global-attest-flymake-mode 1)
 (global-attest-status-mode 1)
 (keymap-global-set "C-c t" attest-prefix-map)
 ```
+
+`attest-all` loads the core, the four backends and the three consumers.
+Require the files individually to load fewer: `attest` plus at least one
+backend is the minimum, and each consumer is optional. A backend whose
+runner is not installed costs nothing but the load, since backends are
+chosen per buffer.
 
 | key | command |
 |---|---|
