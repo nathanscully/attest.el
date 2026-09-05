@@ -109,5 +109,24 @@ The run is killed and the result cache cleared afterwards."
         (attest--finish run 'finished))
       (should (string-match-p "1 passed, 0 failed, 0 skipped" summary)))))
 
+(ert-deftest attest-start-rejects-a-run-it-cannot-mutate ()
+  "A run that plist-put cannot extend in place is refused before it runs.
+`plist-put' on nil discards the write, so such a run would lose its
+process, status and results silently.  The check must reject it rather
+than let a later missing key be the thing that fails."
+  (let ((attest-process-test--command
+         (list :command (list "sh" "-c" "true") :parse-stream 'stdout))
+        (attest-save-before-run nil)
+        (attest-display-output nil)
+        (spawned nil))
+    (cl-letf (((symbol-function 'attest--spawn)
+               (lambda (&rest _) (setq spawned t) nil)))
+      (dolist (run (list nil
+                         (list :scope 'file :status 'pending)
+                         (list :backend 'process-test :scope 'file)))
+        (let ((err (should-error (attest--start run))))
+          (should (string-prefix-p "Attest: run " (cadr err)))))
+      (should-not spawned))))
+
 (provide 'attest-process-test)
 ;;; attest-process-test.el ends here
