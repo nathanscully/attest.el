@@ -93,6 +93,14 @@ project supplies its own file list."
   :type '(repeat string)
   :package-version '(attest . "0.1.0"))
 
+(defcustom attest-max-file-size (* 512 1024)
+  "Skip files larger than this many bytes during discovery.
+Discovery parses every file a run covers before the runner starts, so a
+generated or minified file can stall it.  A file already open in a
+buffer is parsed whatever its size.  Set to nil to parse everything."
+  :type '(choice (const :tag "No limit" nil) integer)
+  :package-version '(attest . "0.1.0"))
+
 (defvar attest-run-started-functions nil
   "Abnormal hook called with the run plist when a test process starts.
 Consumers such as `attest-status-mode' use it to mark known tests as
@@ -363,6 +371,16 @@ Each position is a plist with :id, :type (`test' or `namespace'),
            (query (attest--query backend file)))
       (attest--buffer-positions file (car query) (cdr query)))))
 
+(defun attest--parseable-size-p (file)
+  "Return non-nil unless FILE is too large to parse during a run.
+Discovery parses every file in scope on the Emacs thread, so one
+generated or minified file would otherwise stall the whole run.  A
+buffer already visiting FILE is parsed whatever its size, since the user
+asked for it."
+  (or (null attest-max-file-size)
+      (let ((size (file-attribute-size (file-attributes file))))
+        (or (null size) (<= size attest-max-file-size)))))
+
 (defun attest-file-positions (file &optional backend)
   "Return the positions in FILE using BACKEND's query.
 BACKEND defaults to the first whose :test-file-p accepts FILE.  A live
@@ -376,7 +394,7 @@ parsed in a temporary buffer.  Returns nil when FILE cannot be read."
      ((find-buffer-visiting file)
       (with-current-buffer (find-buffer-visiting file)
         (attest--buffer-positions file (car query) (cdr query))))
-     ((file-readable-p file)
+     ((and (file-readable-p file) (attest--parseable-size-p file))
       (with-temp-buffer
         (insert-file-contents file)
         (attest--buffer-positions file (car query) (cdr query)))))))
@@ -626,7 +644,10 @@ knows nothing about ROOT the directory is walked instead."
       (force-mode-line-update t))))
 
 (defun attest--progress-start (run)
-  "Show that RUN has started, in the echo area and the mode line."
+  "Show that RUN has started, in the echo area and the mode line.
+Called before discovery, which parses every file in scope on the Emacs
+thread and takes hundreds of milliseconds on a large project.  Emacs is
+unresponsive for that stretch, so it must not also be silent."
   (message "attest: running %s..." (attest-run-description run))
   (dolist (buffer (attest--progress-buffers run))
     (with-current-buffer buffer
@@ -894,8 +915,8 @@ missing these would silently lose every key set during the run.")
              (and buffer-file-name
                   (file-in-directory-p buffer-file-name root))))))
     (setq attest--last-run run)
-    (attest--prune-run-scope run)
     (attest--progress-start run)
+    (attest--prune-run-scope run)
     (run-hook-with-args 'attest-run-started-functions run)
     (condition-case err
         (attest--spawn run command directory parse-stream)
