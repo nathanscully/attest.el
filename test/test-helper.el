@@ -40,5 +40,29 @@ fixtures directory, so replayed events carry this checkout's paths."
                      :root attest-test-fixtures)))
      ,@body))
 
+(defvar attest-test-run-timeout 120
+  "Seconds to wait for a spawned runner before failing the test.")
+
+(defun attest-test-run-and-wait (file mode scope &rest props)
+  "Run SCOPE with PROPS from a buffer visiting FILE in MODE and wait.
+Returns the finished run plist.  Used by the integration tests and the
+stress suite, both of which need a real runner to finish before they can
+assert anything about it."
+  (let ((attest-save-before-run nil)
+        (attest-display-output nil)
+        (finished nil))
+    (with-temp-buffer
+      (insert-file-contents file)
+      (setq buffer-file-name file)
+      (setq default-directory (file-name-directory file))
+      (funcall mode)
+      (let ((attest-run-finished-functions
+             (list (lambda (_run) (setq finished t)))))
+        (apply #'attest-run scope props)
+        (with-timeout (attest-test-run-timeout
+                       (ert-fail (format "Runner did not finish for %s" file)))
+          (while (not finished) (accept-process-output nil 0.1)))))
+    (attest-last-run)))
+
 (provide 'test-helper)
 ;;; test-helper.el ends here

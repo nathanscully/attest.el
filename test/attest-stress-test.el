@@ -36,21 +36,8 @@
 (defun attest-stress--run (file mode scope &rest props)
   "Run SCOPE with PROPS from a buffer visiting FILE in MODE and wait.
 Returns the finished run plist."
-  (let ((attest-save-before-run nil)
-        (attest-display-output nil)
-        (finished nil))
-    (with-temp-buffer
-      (insert-file-contents file)
-      (setq buffer-file-name file)
-      (setq default-directory (file-name-directory file))
-      (funcall mode)
-      (let ((attest-run-finished-functions
-             (list (lambda (_run) (setq finished t)))))
-        (apply #'attest-run scope props)
-        (with-timeout (attest-stress-timeout
-                       (ert-fail (format "Runner did not finish for %s" file)))
-          (while (not finished) (accept-process-output nil 0.1)))))
-    (attest-last-run)))
+  (let ((attest-test-run-timeout attest-stress-timeout))
+    (apply #'attest-test-run-and-wait file mode scope props)))
 
 (defun attest-stress--test-ids (results)
   "Return the ids of the test results in RESULTS."

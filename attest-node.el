@@ -35,7 +35,6 @@
 ;;; Code:
 
 (require 'attest)
-(require 'url-util)
 
 (defgroup attest-node nil
   "Node test runner backend for attest."
@@ -187,6 +186,25 @@ A test matches exactly; a namespace also matches every test below it."
           :env (attest-node-env)
           :parse-stream 'stderr)))
 
+(defun attest-node--decode-path (path)
+  "Return PATH with its percent escapes decoded.
+Node writes stack frames as file URLs, so a path with a space or any
+other reserved character arrives escaped."
+  (if (string-match-p "%[0-9a-fA-F][0-9a-fA-F]" path)
+      (decode-coding-string
+       (apply #'unibyte-string
+              (let ((i 0) (len (length path)) bytes)
+                (while (< i len)
+                  (if (and (eq (aref path i) ?%) (< (+ i 2) len))
+                      (progn (push (string-to-number (substring path (1+ i) (+ i 3)) 16)
+                                   bytes)
+                             (setq i (+ i 3)))
+                    (push (aref path i) bytes)
+                    (setq i (1+ i))))
+                (nreverse bytes)))
+       'utf-8)
+    path))
+
 (defun attest-node--frame-in-file (stack file)
   "Return (LINE . COLUMN) of the first frame of STACK located in FILE."
   (let ((start 0) found)
@@ -194,7 +212,7 @@ A test matches exactly; a namespace also matches every test below it."
                 (string-match "\\(?:file://\\)?\\(/[^:()[:space:]]+\\):\\([0-9]+\\):\\([0-9]+\\)"
                               stack start))
       (setq start (match-end 0))
-      (when (string= (url-unhex-string (match-string 1 stack)) file)
+      (when (string= (attest-node--decode-path (match-string 1 stack)) file)
         (setq found (cons (string-to-number (match-string 2 stack))
                           (string-to-number (match-string 3 stack))))))
     found))
