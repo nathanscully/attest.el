@@ -93,6 +93,14 @@ project supplies its own file list."
   :type '(repeat string)
   :package-version '(attest . "0.1.0"))
 
+(defcustom attest-max-output (* 2 1024 1024)
+  "Keep at most this many characters in the run output buffer.
+The oldest output is dropped past this point, so a runner that produces
+output without bound cannot exhaust memory during one run.  Set to nil
+to keep everything."
+  :type '(choice (const :tag "No limit" nil) integer)
+  :package-version '(attest . "0.1.0"))
+
 (defcustom attest-max-file-size (* 512 1024)
   "Skip files larger than this many bytes during discovery.
 Discovery parses every file a run covers before the runner starts, so a
@@ -790,10 +798,25 @@ Rebinds g, which `special-mode' gives to `revert-buffer', to rerun.")
   (setq-local ansi-color-context nil)
   (compilation-minor-mode 1))
 
+(defun attest--trim-output ()
+  "Drop the oldest output in the current buffer past `attest-max-output'."
+  (when attest-max-output
+    (let ((excess (- (buffer-size) attest-max-output)))
+      (when (> excess 0)
+        (save-excursion
+          (goto-char (point-min))
+          (forward-char excess)
+          (forward-line 1)
+          (delete-region (point-min) (point))
+          (goto-char (point-min))
+          (insert (propertize "[earlier output dropped]\n" 'face 'shadow)))))))
+
 (defun attest-append-output (run string)
-  "Append STRING to RUN's output buffer.
+  "Append STRING to RUN\='s output buffer.
 Backends whose runner embeds human-readable output inside structured
-events call this to surface it."
+events call this to surface it.  The oldest output is dropped once the
+buffer passes `attest-max-output', so a runner that never stops talking
+cannot exhaust memory."
   (when-let* ((buffer (plist-get run :output-buffer)))
     (when (buffer-live-p buffer)
       (with-current-buffer buffer
@@ -804,6 +827,7 @@ events call this to surface it."
             (let ((start (point)))
               (insert string)
               (ansi-color-apply-on-region start (point))))
+          (attest--trim-output)
           (when at-end (goto-char (point-max))))))))
 
 (defun attest-parse-json-line (run line &optional array-type)
