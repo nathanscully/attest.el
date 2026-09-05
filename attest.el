@@ -34,6 +34,8 @@
 ;; A backend is registered with `attest-register-backend' and supplies:
 ;;   :predicate   a function saying whether it owns the current buffer
 ;;   :test-file-p how to recognise a test file path
+;;   :project-p   optional; non-nil when the buffer sits in this
+;;                backend's project, whether or not it is a test file
 ;;   :query       a tree-sitter query that finds tests and groups
 ;;   :command     how to turn a run spec into a process command
 ;;   :parse-line  how to turn one line of runner output into results
@@ -129,6 +131,10 @@ PROPS is a plist with these keys:
 :predicate    Function of no arguments returning non-nil when the
               backend owns the current buffer.
 :test-file-p  Function of a file name returning non-nil for test files.
+:project-p    Optional function of no arguments returning non-nil when
+              the current buffer sits in this backend\='s project, test
+              file or not.  Used to resolve a `project' run; falls back
+              to :predicate.
 :query        Cons (LANGUAGE . QUERY), or a function of a file name
               returning one.  QUERY is a tree-sitter query whose captures
               are @test.definition, @test.name, @namespace.definition
@@ -162,9 +168,24 @@ PROPS is a plist with these keys:
                      (funcall pred file)))
                  attest--backends)))
 
-(defun attest--require-backend ()
-  "Return the backend for the current buffer or signal a user error."
-  (or (attest-backend-for-buffer)
+(defun attest-backend-for-project (&optional buffer)
+  "Return the backend owning BUFFER\='s project, or nil.
+A project run starts from any file in the project, not only a test file,
+so this asks each backend whether it claims the project rather than the
+buffer.  A backend without :project-p is asked about the buffer."
+  (with-current-buffer (or buffer (current-buffer))
+    (car (seq-find (lambda (entry)
+                     (if-let* ((claims (plist-get (cdr entry) :project-p)))
+                         (funcall claims)
+                       (funcall (plist-get (cdr entry) :predicate))))
+                   attest--backends))))
+
+(defun attest--require-backend (&optional scope)
+  "Return the backend for the current buffer or signal a user error.
+A `project' SCOPE resolves through `attest-backend-for-project'."
+  (or (if (eq scope 'project)
+          (attest-backend-for-project)
+        (attest-backend-for-buffer))
       (user-error "Attest: no backend for `%s'" (buffer-name))))
 
 ;;;; Ids and positions
@@ -184,10 +205,12 @@ PROPS is a plist with these keys:
   "Return the list of names in ID, outermost first."
   (cdr (split-string id attest-id-separator)))
 
-(defun attest-project-root (&optional file)
-  "Return the project root for FILE, defaulting to the current buffer's."
+(defun attest-project-root (&optional file backend)
+  "Return the project root for FILE, defaulting to the current buffer\='s.
+BACKEND names the backend whose :root locates it, defaulting to the one
+owning the current buffer."
   (let* ((file (or file buffer-file-name default-directory))
-         (backend (attest-backend-for-buffer))
+         (backend (or backend (attest-backend-for-buffer)))
          (root-fn (and backend (plist-get (attest-backend-props backend) :root))))
     (file-name-as-directory
      (expand-file-name
@@ -670,9 +693,9 @@ read failure never clears results."
 
 (defun attest--make-run (scope &rest props)
   "Build a run plist for SCOPE from the current buffer, merging PROPS."
-  (let* ((backend (attest--require-backend))
+  (let* ((backend (attest--require-backend scope))
          (file (and buffer-file-name (expand-file-name buffer-file-name)))
-         (root (attest-project-root file)))
+         (root (attest-project-root file backend)))
     (append (list :backend backend
                   :scope scope
                   :file file

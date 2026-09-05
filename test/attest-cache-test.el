@@ -95,5 +95,26 @@
     (should (zerop (hash-table-count attest--results)))
     (should (zerop (hash-table-count attest--results-by-file)))))
 
+(ert-deftest attest-project-scope-resolves-from-a-source-file ()
+  "A project run starts from any file in the project, not only a test."
+  (require 'attest-node)
+  (let* ((dir (make-temp-file "attest-project" t))
+         (src (expand-file-name "src/index.ts" dir)))
+    (unwind-protect
+        (progn
+          (make-directory (expand-file-name "src" dir))
+          (write-region "{}" nil (expand-file-name "package.json" dir) nil 'silent)
+          (write-region "export const x = 1;\n" nil src nil 'silent)
+          (with-temp-buffer
+            (insert-file-contents src)
+            (setq buffer-file-name src)
+            (setq default-directory (file-name-directory src))
+            (typescript-ts-mode)
+            (should-not (attest-backend-for-buffer))
+            (should (eq (attest-backend-for-project) 'node))
+            (should (eq (attest--require-backend 'project) 'node))
+            (should-error (attest--require-backend) :type 'user-error)))
+      (delete-directory dir t))))
+
 (provide 'attest-cache-test)
 ;;; attest-cache-test.el ends here

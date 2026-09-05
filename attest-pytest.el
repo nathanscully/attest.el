@@ -100,6 +100,15 @@ plain classes are not tests.")
        (derived-mode-p 'python-ts-mode 'python-mode)
        (attest-pytest-test-file-p buffer-file-name)))
 
+(defun attest-pytest--project-p ()
+  "Return non-nil when the current buffer sits in a Python project.
+Any Python file qualifies, so a project run can start from source
+rather than only from a test file."
+  (and buffer-file-name
+       (derived-mode-p 'python-ts-mode 'python-mode)
+       (attest-pytest-root buffer-file-name)
+       t))
+
 (defun attest-pytest--nodeid (id root)
   "Return the pytest node id for attest ID relative to ROOT."
   (string-join (cons (file-relative-name (attest-id-file id) root)
@@ -165,6 +174,7 @@ Other stderr lines go to the output buffer."
 
 (attest-register-backend 'pytest
   :predicate #'attest-pytest--buffer-p
+  :project-p #'attest-pytest--project-p
   :test-file-p #'attest-pytest-test-file-p
   :root #'attest-pytest-root
   :query (cons 'python attest-pytest--query)

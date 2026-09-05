@@ -137,11 +137,26 @@ node_modules."
            (string-match-p attest-node-test-directory-regexp file))
        t))
 
+(defconst attest-node--modes
+  '(typescript-ts-mode tsx-ts-mode js-ts-mode js-mode typescript-mode
+    js2-mode rjsx-mode web-mode)
+  "Major modes a node or vitest test file may be visited in.")
+
 (defun attest-node--buffer-p ()
   "Return non-nil when the current buffer is a JavaScript or TypeScript test."
   (and buffer-file-name
-       (derived-mode-p 'typescript-ts-mode 'tsx-ts-mode 'js-ts-mode 'js-mode)
+       (apply #'derived-mode-p attest-node--modes)
        (attest-node-test-file-p buffer-file-name)))
+
+(defun attest-node--project-p ()
+  "Return non-nil when the current buffer sits in a node package.
+Any file in the package qualifies, so a project run can start from
+source rather than only from a test file.  Vitest registers later and is
+asked first, so a vitest package is claimed there."
+  (and buffer-file-name
+       (apply #'derived-mode-p attest-node--modes)
+       (attest-node-root buffer-file-name)
+       t))
 
 (defun attest-node--query (file)
   "Return the discovery query for FILE's language."
@@ -261,6 +276,7 @@ attest-vitest.el, whose reporter emits the same event shape."
 
 (attest-register-backend 'node
   :predicate #'attest-node--buffer-p
+  :project-p #'attest-node--project-p
   :test-file-p #'attest-node-test-file-p
   :root #'attest-node-root
   :query #'attest-node--query
