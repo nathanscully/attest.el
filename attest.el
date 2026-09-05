@@ -371,6 +371,28 @@ Each position is a plist with :id, :type (`test' or `namespace'),
            (query (attest--query backend file)))
       (attest--buffer-positions file (car query) (cdr query)))))
 
+(defvar attest--position-cache (make-hash-table :test 'equal)
+  "Cached discovery keyed by true name, holding (STAMP . POSITIONS).
+STAMP is the file\='s modification time and size, so an unchanged file is
+parsed once however many runs cover it.")
+
+(defun attest--file-stamp (file)
+  "Return a value identifying FILE\='s current contents, or nil.
+Modification time and size together, which is what the parse cache
+compares to decide whether a file must be read again."
+  (when-let* ((attrs (file-attributes file)))
+    (cons (file-attribute-modification-time attrs)
+          (file-attribute-size attrs))))
+
+(defun attest-invalidate-positions (&optional file)
+  "Drop cached discovery for FILE, or for every file.
+Discovery is keyed by modification time and size, so this is only needed
+when a file changes without either moving."
+  (interactive)
+  (if file
+      (remhash (attest--file-key file) attest--position-cache)
+    (clrhash attest--position-cache)))
+
 (defun attest--parseable-size-p (file)
   "Return non-nil unless FILE is too large to parse during a run.
 Discovery parses every file in scope on the Emacs thread, so one
@@ -395,9 +417,18 @@ parsed in a temporary buffer.  Returns nil when FILE cannot be read."
       (with-current-buffer (find-buffer-visiting file)
         (attest--buffer-positions file (car query) (cdr query))))
      ((and (file-readable-p file) (attest--parseable-size-p file))
-      (with-temp-buffer
-        (insert-file-contents file)
-        (attest--buffer-positions file (car query) (cdr query)))))))
+      (let* ((key (attest--file-key file))
+             (stamp (attest--file-stamp file))
+             (cached (gethash key attest--position-cache)))
+        (if (and cached stamp (equal (car cached) stamp))
+            (cdr cached)
+          (let ((positions (with-temp-buffer
+                             (insert-file-contents file)
+                             (attest--buffer-positions
+                              file (car query) (cdr query)))))
+            (when stamp
+              (puthash key (cons stamp positions) attest--position-cache))
+            positions)))))))
 
 (defun attest--run-file-index (run file)
   "Return (POSITIONS . BY-ID) for FILE in RUN, parsing FILE at most once.
