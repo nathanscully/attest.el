@@ -857,8 +857,22 @@ until the pipe has nothing left."
               'finished)
              (t 'error))))))
 
+(defconst attest--run-required-keys '(:backend :scope :status)
+  "Keys a run plist must already hold before `attest--start' mutates it.
+`plist-put' extends a plist in place only when it is non-empty, so a run
+missing these would silently lose every key set during the run.")
+
+(defun attest--check-run (run)
+  "Signal unless RUN is a plist `attest--start' can safely mutate."
+  (unless (and run (plistp run))
+    (error "Attest: run must be a non-empty plist, got %S" run))
+  (dolist (key attest--run-required-keys)
+    (unless (plist-member run key)
+      (error "Attest: run is missing %s: %S" key run))))
+
 (defun attest--start (run)
   "Start the process for RUN according to its backend."
+  (attest--check-run run)
   (let* ((props (attest-backend-props (plist-get run :backend)))
          (spec (funcall (plist-get props :command) run))
          (command (plist-get spec :command))
