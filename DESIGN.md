@@ -183,8 +183,11 @@ None of these touched the backend contract or the consumers.
 - A tree view. `attest-list` is a flat table; failures-only filter covers the common case.
 - Watch mode and the LSP-derived dependency graph.
 - Debugging (dape) integration.
-- Discovery in unopened files and a project-wide position tree.
+- A project-wide position tree. Discovery reads unopened files a run
+  covers, but nothing indexes the repo ahead of a run.
 - Parameterised tests (`test.each`, template-string names).
 - TAP parsing.
-- A second backend. Phase 3 decides whether the contract survives pytest or cargo.
+- Concurrent runs. One run is tracked at a time: starting a run kills the
+  previous one, and `attest-kill` stops whichever is current, whatever
+  project it belongs to.
 - Any UI that needs projectile, treemacs, transient or dash.

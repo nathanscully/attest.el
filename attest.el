@@ -505,7 +505,10 @@ Tests win over namespaces of equal extent.  POSITIONS defaults to
   "Latest known result for every test id.")
 
 (defvar attest--last-run nil
-  "The most recent run plist.")
+  "The most recent run plist.
+Attest deliberately tracks a single run: starting one kills the one
+before it, and `attest-kill' stops whichever is current.  Two projects
+cannot run at the same time.")
 
 (defvar attest--results-by-file (make-hash-table :test 'equal)
   "Ids of the results recorded for each file, keyed by true name.
@@ -1076,7 +1079,10 @@ a rerun picks up test files added or deleted since."
 
 ;;;###autoload
 (defun attest-kill ()
-  "Kill the running test process, if any."
+  "Kill the running test process, if any.
+Attest tracks one run at a time, so this kills whichever run is current
+whatever project it belongs to.  Starting a run kills the previous one
+for the same reason."
   (interactive)
   (when-let* ((run attest--last-run)
               (process (plist-get run :process)))
