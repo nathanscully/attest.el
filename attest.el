@@ -381,17 +381,27 @@ parsed in a temporary buffer.  Returns nil when FILE cannot be read."
         (insert-file-contents file)
         (attest--buffer-positions file (car query) (cdr query)))))))
 
-(defun attest-run-file-positions (run file)
-  "Return the positions of FILE for RUN, parsing FILE at most once per run."
+(defun attest--run-file-index (run file)
+  "Return (POSITIONS . BY-ID) for FILE in RUN, parsing FILE at most once.
+POSITIONS keeps discovery order, which `attest--link-positions' relies
+on; BY-ID maps each id to its position so a lookup does not scan."
   (let ((index (or (plist-get run :index)
                    (let ((table (make-hash-table :test 'equal)))
                      (plist-put run :index table)
                      table)))
         (file (expand-file-name file)))
     (let ((cached (gethash file index 'missing)))
-      (if (eq cached 'missing)
-          (puthash file (attest-file-positions file (plist-get run :backend)) index)
-        cached))))
+      (if (not (eq cached 'missing))
+          cached
+        (let ((positions (attest-file-positions file (plist-get run :backend)))
+              (by-id (make-hash-table :test 'equal)))
+          (dolist (pos positions)
+            (puthash (plist-get pos :id) pos by-id))
+          (puthash file (cons positions by-id) index))))))
+
+(defun attest-run-file-positions (run file)
+  "Return the positions of FILE for RUN, parsing FILE at most once per run."
+  (car (attest--run-file-index run file)))
 
 (defun attest-run-files (run)
   "Return the files RUN covers.
@@ -410,18 +420,7 @@ A `project' run lists its :files, a `targets' run the files of its
 
 (defun attest-run-position-table (run file)
   "Return a hash of id to position for FILE in RUN, built once per file."
-  (let ((tables (or (plist-get run :position-index)
-                    (let ((new (make-hash-table :test 'equal)))
-                      (plist-put run :position-index new)
-                      new)))
-        (file (expand-file-name file)))
-    (let ((cached (gethash file tables 'missing)))
-      (if (eq cached 'missing)
-          (let ((table (make-hash-table :test 'equal)))
-            (dolist (pos (attest-run-file-positions run file))
-              (puthash (plist-get pos :id) pos table))
-            (puthash file table tables))
-        cached))))
+  (cdr (attest--run-file-index run file)))
 
 (defun attest-run-position (run id)
   "Return the position with ID discovered for RUN, or nil."
@@ -936,7 +935,7 @@ the copy behaves like a first run.  A project run rescans its root, so
 a rerun picks up test files added or deleted since."
   (attest-kill)
   (let ((copy (copy-sequence run)))
-    (dolist (key '(:result-ids :results :state :index :position-index))
+    (dolist (key '(:result-ids :results :state :index))
       (plist-put copy key nil))
     (while props
       (plist-put copy (pop props) (pop props)))
