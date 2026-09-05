@@ -128,5 +128,27 @@ than let a later missing key be the thing that fails."
           (should (string-prefix-p "Attest: run " (cadr err)))))
       (should-not spawned))))
 
+(ert-deftest attest-output-buffer-stays-bounded ()
+  "Output past `attest-max-output' drops the oldest lines, not the newest."
+  (with-temp-buffer
+    (let ((run (list :backend 'process-test :output-buffer (current-buffer)))
+          (attest-max-output 2000))
+      (dotimes (i 400)
+        (attest-append-output run (format "line %03d padded out to some length\n" i)))
+      (should (<= (buffer-size) 2200))
+      (should (string-match-p "line 399" (buffer-string)))
+      (should-not (string-match-p "line 000" (buffer-string)))
+      (should (string-match-p "earlier output dropped" (buffer-string))))))
+
+(ert-deftest attest-output-buffer-keeps-everything-when-unlimited ()
+  "A nil limit keeps the whole run."
+  (with-temp-buffer
+    (let ((run (list :backend 'process-test :output-buffer (current-buffer)))
+          (attest-max-output nil))
+      (dotimes (i 200)
+        (attest-append-output run (format "line %03d\n" i)))
+      (should (string-match-p "line 000" (buffer-string)))
+      (should (string-match-p "line 199" (buffer-string))))))
+
 (provide 'attest-process-test)
 ;;; attest-process-test.el ends here
