@@ -732,6 +732,20 @@ events call this to surface it."
               (ansi-color-apply-on-region start (point))))
           (when at-end (goto-char (point-max))))))))
 
+(defun attest-parse-json-line (run line &optional array-type)
+  "Return the JSON object LINE holds, or nil, sending other lines to output.
+A runner interleaves its own human-readable output with the structured
+events attest reads, so a line that is not JSON belongs in RUN\='s output
+buffer.  ARRAY-TYPE is passed to `json-parse-string'; objects come back
+as alists with null and false read as nil."
+  (if (string-prefix-p "{" line)
+      (ignore-errors
+        (json-parse-string line :object-type 'alist
+                           :array-type (or array-type 'array)
+                           :null-object nil :false-object nil))
+    (attest-append-output run (concat line "\n"))
+    nil))
+
 (defun attest--feed-lines (run key string)
   "Split STRING into lines, buffering a partial line under KEY in RUN.
 Complete lines go to the backend\='s :parse-line.  A carriage return

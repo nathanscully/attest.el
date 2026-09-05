@@ -221,16 +221,11 @@ Doc tests are named `PATH - ITEM (line N)' by rustdoc."
 (defun attest-rust--parse-line (run line)
   "Parse one libtest JSON LINE from RUN into a result or nil.
 Other stdout lines go to the output buffer."
-  (unless (string-prefix-p "{" line)
-    (attest-append-output run (concat line "\n")))
-  (when (string-prefix-p "{" line)
-    (when-let* ((event (ignore-errors
-                         (json-parse-string line :object-type 'alist
-                                            :null-object nil :false-object nil))))
-      (when (and (equal (alist-get 'type event) "test")
-                 (member (alist-get 'event event) '("ok" "failed" "ignored"))
-                 (not (attest-rust--doctest-p (alist-get 'name event))))
-        (attest-rust--result run event)))))
+  (when-let* ((event (attest-parse-json-line run line)))
+    (when (and (equal (alist-get 'type event) "test")
+               (member (alist-get 'event event) '("ok" "failed" "ignored"))
+               (not (attest-rust--doctest-p (alist-get 'name event))))
+      (attest-rust--result run event))))
 
 (attest-register-backend 'rust
   :predicate #'attest-rust--buffer-p

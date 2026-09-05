@@ -247,14 +247,9 @@ EVENT carries `names' outermost first, `file', `location', `state',
 (defun attest-node--parse-line (run line)
   "Parse one reporter LINE from RUN into a result or nil.
 Lines that are not JSON, such as syntax errors, go to the output."
-  (if (string-prefix-p "{" line)
-      (when-let* ((event (ignore-errors
-                           (json-parse-string line :object-type 'alist
-                                              :null-object nil :false-object nil))))
-        (when (equal (alist-get 'type event) "attest:test")
-          (attest-node--result event)))
-    (attest-append-output run (concat line "\n"))
-    nil))
+  (when-let* ((event (attest-parse-json-line run line)))
+    (when (equal (alist-get 'type event) "attest:test")
+      (attest-node--result event))))
 
 (defun attest-node-parse-scoped-line (run line)
   "Parse LINE from RUN, dropping results outside its targets.
