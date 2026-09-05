@@ -156,5 +156,31 @@
       (when buffer (kill-buffer buffer))
       (delete-file file))))
 
+(ert-deftest attest-discovery-reuses-an-unchanged-file ()
+  "An unchanged file is parsed once; a changed one is parsed again."
+  (require 'attest-node)
+  (let ((file (make-temp-file "attest-stamp" nil ".test.js"))
+        (parses 0))
+    (unwind-protect
+        (progn
+          (attest-invalidate-positions)
+          (write-region "test('one', () => {});\n" nil file nil 'silent)
+          (let ((orig (symbol-function 'attest--buffer-positions)))
+            (cl-letf (((symbol-function 'attest--buffer-positions)
+                       (lambda (&rest args)
+                         (setq parses (1+ parses))
+                         (apply orig args))))
+              (attest-file-positions file 'node)
+              (attest-file-positions file 'node)
+              (attest-file-positions file 'node)
+              (should (= parses 1))
+              (write-region "test('one', () => {});\ntest('two', () => {});\n"
+                            nil file nil 'silent)
+              (set-file-times file (time-add (current-time) 5))
+              (should (= (length (attest-file-positions file 'node)) 2))
+              (should (= parses 2)))))
+      (attest-invalidate-positions)
+      (delete-file file))))
+
 (provide 'attest-cache-test)
 ;;; attest-cache-test.el ends here
