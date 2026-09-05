@@ -127,5 +127,34 @@
                            attest-flymake attest-status attest-list))
     (should (featurep feature))))
 
+(ert-deftest attest-discovery-skips-oversized-files ()
+  "A file past `attest-max-file-size' is not parsed during discovery."
+  (require 'attest-node)
+  (let ((file (make-temp-file "attest-big" nil ".test.js")))
+    (unwind-protect
+        (progn
+          (write-region "test('one', () => {});\n" nil file nil 'silent)
+          (let ((attest-max-file-size 1000000))
+            (should (attest-file-positions file 'node)))
+          (let ((attest-max-file-size 1))
+            (should-not (attest-file-positions file 'node)))
+          (let ((attest-max-file-size nil))
+            (should (attest-file-positions file 'node))))
+      (delete-file file))))
+
+(ert-deftest attest-discovery-parses-an-open-buffer-whatever-its-size ()
+  "The size limit does not apply to a file the user already has open."
+  (require 'attest-node)
+  (let* ((file (make-temp-file "attest-open" nil ".test.js"))
+         (buffer nil))
+    (unwind-protect
+        (progn
+          (write-region "test('one', () => {});\n" nil file nil 'silent)
+          (setq buffer (find-file-noselect file))
+          (let ((attest-max-file-size 1))
+            (should (attest-file-positions file 'node))))
+      (when buffer (kill-buffer buffer))
+      (delete-file file))))
+
 (provide 'attest-cache-test)
 ;;; attest-cache-test.el ends here
