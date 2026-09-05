@@ -94,6 +94,13 @@ The attribute may be namespaced and may carry arguments, so both
        (derived-mode-p 'rust-ts-mode 'rust-mode)
        (string-suffix-p ".rs" buffer-file-name)))
 
+(defun attest-rust--project-p ()
+  "Return non-nil when the current buffer sits in a cargo project."
+  (and buffer-file-name
+       (string-suffix-p ".rs" buffer-file-name)
+       (attest-rust-root buffer-file-name)
+       t))
+
 (defun attest-rust-module-prefix (file root)
   "Return the libtest module path of FILE relative to crate ROOT.
 Crate roots and integration test files map to the empty string."
@@ -229,6 +236,7 @@ Other stdout lines go to the output buffer."
 
 (attest-register-backend 'rust
   :predicate #'attest-rust--buffer-p
+  :project-p #'attest-rust--project-p
   :test-file-p #'attest-rust-test-file-p
   :root #'attest-rust-root
   :query (cons 'rust attest-rust--query)

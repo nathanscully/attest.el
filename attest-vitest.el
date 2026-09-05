@@ -86,6 +86,17 @@ takes the first backend that claims the file."
        (attest-vitest--bin-dir file)
        t))
 
+(defun attest-vitest--available-p (file)
+  "Return non-nil when a vitest binary sits above FILE."
+  (and (attest-vitest--bin-dir file) t))
+
+(defun attest-vitest--project-p ()
+  "Return non-nil when the current buffer sits in a vitest package."
+  (and buffer-file-name
+       (apply #'derived-mode-p attest-node--modes)
+       (attest-vitest--available-p buffer-file-name)
+       t))
+
 (defun attest-vitest--buffer-p ()
   "Return non-nil for a JavaScript or TypeScript test buffer in a vitest package."
   (and (attest-node--buffer-p)
@@ -173,6 +184,7 @@ tests that did not run; leaving them out keeps the last real status."
 
 (attest-register-backend 'vitest
   :predicate #'attest-vitest--buffer-p
+  :project-p #'attest-vitest--project-p
   :test-file-p #'attest-vitest-test-file-p
   :root #'attest-vitest-root
   :query #'attest-node--query
