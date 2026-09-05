@@ -302,17 +302,18 @@ collapse into a single position."
 (defun attest--link-positions (positions file)
   "Assign :parent-id and :id to POSITIONS from FILE by range containment.
 POSITIONS must be sorted by :beg ascending."
-  (let (stack)
+  (let ((names (make-hash-table :test 'eq))
+        stack)
     (dolist (pos positions)
       (while (and stack
                   (>= (plist-get pos :beg) (plist-get (car stack) :end)))
         (pop stack))
       (let* ((parent (car stack))
-             (names (append (and parent (plist-get parent :names))
-                            (list (plist-get pos :name)))))
+             (path (append (and parent (gethash parent names))
+                           (list (plist-get pos :name)))))
+        (puthash pos path names)
         (plist-put pos :parent-id (and parent (plist-get parent :id)))
-        (plist-put pos :names names)
-        (plist-put pos :id (apply #'attest-make-id file names))
+        (plist-put pos :id (apply #'attest-make-id file path))
         (when (eq (plist-get pos :type) 'namespace)
           (push pos stack))))
     positions))
