@@ -279,9 +279,74 @@ New commands: `attest-clear-results`, `attest-invalidate-positions`.
 New function: `attest-cache-result`, so a caller seeding the cache cannot
 desynchronise it from the file index.
 
+## Follow-up round (`6bf894c`)
+
+The reviewer read the above and found seven blockers, all correct. This
+document originally said "nothing remains", which was wrong. Fixed:
+
+1. **Item 20 was only fixed for node and pytest.** Rust indexes its
+   crate inside `:command`, which ran before the progress message.
+   Measured: 395 ms of silence for the 40 files of `stress/cargo`.
+   Progress now starts before `:command`; the message lands at 53 ms. A
+   `:command` that signals clears the indicator instead of leaving it
+   spinning.
+
+2. **Rust crate-root file scope still ran sibling modules.**
+   Mis-attribution was fixed, extra execution was not. Confirmed against
+   cargo: `--lib --bins` with no filter reports `0 filtered out`, so
+   `scanner.rs` and `scanner_other.rs` ran and were discarded. Passing
+   the file's own names with `--exact` reports `2 filtered out`.
+
+3. **Path identity was half-applied.** `attest--progress-buffers` still
+   used `member`, and the per-run position index keyed on
+   `expand-file-name`, so a runner naming a file differently lost
+   discovery's line and column. Both key on true names now, with a
+   name-based fallback across the run's files.
+
+4. **`attest-clear-results` did not reach the consumers.** It fired
+   `attest-run-finished-functions` with the last run: the fringe
+   consumer is not on that hook, and a prefix-arg clear of file A named
+   file B. New `attest-results-changed-functions` carries the files that
+   changed; all three consumers subscribe, and the list drops rows the
+   cache no longer holds.
+
+5. **Wrong ANSI variable.** `ansi-color-apply-on-region` reads
+   `ansi-color-context-region`; the mode reset `ansi-color-context`.
+
+6. **Vitest `.only` was project-global.** One `.only` stopped genuine
+   `test.skip` updating in every other file of the run. Now per file,
+   which also reads each file lazily rather than scanning the project on
+   the first skipped event.
+
+7. **`attest-all.el` header was truncated.** The licence block started
+   mid-sentence and `;;; Commentary:` appeared twice. checkdoc passed it.
+   Rebuilt from the core file, now byte-identical.
+
+Plus the smaller notes: `attest-cache-result` left a ghost when an id
+moved between files; prune no longer treats a file skipped for size as
+having lost its tests; `attest-rust--project-p` now requires a rust mode
+like the other backends; the process-test stub's `:root` matches the
+`(file) -> dir` contract.
+
+Two of these were bugs in the first round's own new code (5 and 7), and
+one had never worked: `mode-line-process` crashed on a string value,
+because `memq` rejects a string, so the restoration written for exactly
+that case could not run. Both found by writing the test first.
+
+Tests: 97 to 105. Five of the seven new tests were red against the
+previous head; the two that were not are noted in the file, and one of
+them was rewritten after it turned out to pass for the wrong reason
+(`expand-file-name` already reconciles a same-directory symlink, so it
+was not exercising the fallback at all).
+
 ## Not done
 
-Nothing from the review remains. The open work is the pre-existing
-roadmap: chunked or child-Emacs discovery for repo-wide indexing, and
-`test.each` / parametrized names, tracked by the `stress/*/dynamic*`
-files whose parity tests are declared `:expected-result :failed`.
+The open work is the pre-existing roadmap: chunked or child-Emacs
+discovery for repo-wide indexing, and `test.each` / parametrized names,
+tracked by the `stress/*/dynamic*` files whose parity tests are declared
+`:expected-result :failed`.
+
+Knowingly left: the position cache never evicts, which is fine for a
+session and has `attest-invalidate-positions` as the escape hatch.
+Queueing results off the process filter (item 23) is still only
+documented, not implemented.
