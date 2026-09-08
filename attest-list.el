@@ -65,11 +65,14 @@
                           line)))))
 
 (defun attest-list--entries ()
-  "Return the entries for the last run, honouring the failure filter."
+  "Return the entries for the last run, honouring the failure filter.
+A result the cache no longer holds is dropped, so clearing results
+empties the list rather than leaving the last run on screen."
   (when-let* ((run (attest-last-run)))
     (mapcar #'attest-list--entry
             (seq-filter (lambda (r)
                           (and (eq (plist-get r :type) 'test)
+                               (attest-result (plist-get r :id))
                                (or (not attest-list--failures-only)
                                    (eq (plist-get r :status) 'failed))))
                         (attest-run-results run)))))
@@ -128,6 +131,10 @@
     (with-current-buffer buffer
       (tabulated-list-revert))))
 
+(defun attest-list--results-changed (_files)
+  "Redraw the results buffer when the cache changed outside a run."
+  (attest-list--refresh nil))
+
 ;;;###autoload
 (defun attest-list ()
   "Show the results of the last run."
@@ -137,6 +144,7 @@
       (unless (derived-mode-p 'attest-list-mode)
         (attest-list-mode))
       (add-hook 'attest-run-finished-functions #'attest-list--refresh)
+      (add-hook 'attest-results-changed-functions #'attest-list--results-changed)
       (tabulated-list-revert))
     (pop-to-buffer buffer)))
 

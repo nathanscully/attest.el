@@ -94,7 +94,11 @@
 
 (ert-deftest attest-rust-file-scope-filters-by-module-with-separator ()
   (skip-unless (treesit-language-available-p 'rust))
-  (let ((filters (attest-rust--file-filters attest-rust-test--scanner attest-rust-test--root)))
+  (let* ((run (list :backend 'rust :scope 'file :root attest-rust-test--root
+                    :file attest-rust-test--scanner))
+         (filters (attest-rust--file-filters
+                   attest-rust-test--scanner attest-rust-test--root
+                   (attest-rust--index run))))
     (should (equal filters '("scanner::")))
     (should-not (member "scanner" filters))))
 
@@ -112,8 +116,21 @@
          (cmd (plist-get (attest-rust--command run) :command)))
     (should (member "--lib" cmd))
     (should (member "--bins" cmd))
-    (should (equal (seq-drop-while (lambda (a) (not (equal a "--"))) cmd)
-                   '("--" "-Z" "unstable-options" "--format=json" "--report-time")))))
+    (should (member "--exact" cmd))
+    (let ((filters (seq-take-while
+                    (lambda (a) (not (equal a "-Z")))
+                    (cdr (seq-drop-while (lambda (a) (not (equal a "--"))) cmd)))))
+      (should (equal filters
+                     '("--exact" "tests::adds" "tests::fails_on_purpose"
+                       "tests::ignored_one" "tests::panics"))))))
+
+(ert-deftest attest-rust-crate-root-file-scope-excludes-sibling-modules ()
+  "A crate root run names its own tests, so cargo skips other modules."
+  (skip-unless (treesit-language-available-p 'rust))
+  (let* ((run (list :backend 'rust :scope 'file :root attest-rust-test--root
+                    :file attest-rust-test--lib))
+         (cmd (plist-get (attest-rust--command run) :command)))
+    (should-not (seq-find (lambda (a) (string-prefix-p "scanner" a)) cmd))))
 
 (ert-deftest attest-rust-drops-events-outside-the-run-index ()
   (skip-unless (treesit-language-available-p 'rust))

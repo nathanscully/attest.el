@@ -95,9 +95,11 @@ The attribute may be namespaced and may carry arguments, so both
        (string-suffix-p ".rs" buffer-file-name)))
 
 (defun attest-rust--project-p ()
-  "Return non-nil when the current buffer sits in a cargo project."
+  "Return non-nil when the current buffer sits in a cargo project.
+Requires a rust mode, as the other backends require theirs, so a stray
+`.rs' file opened in fundamental mode does not claim the project."
   (and buffer-file-name
-       (string-suffix-p ".rs" buffer-file-name)
+       (derived-mode-p 'rust-ts-mode 'rust-mode)
        (attest-rust-root buffer-file-name)
        t))
 
@@ -142,14 +144,22 @@ a file under tests/ is an integration test target of its own name."
       (`("src" . ,_) (list "--lib" "--bins"))
       (_ nil))))
 
-(defun attest-rust--file-filters (file root)
+(defun attest-rust--file-filters (file root index)
   "Return libtest filter arguments selecting the tests of FILE at ROOT.
 A module file is selected by its module path with a trailing separator,
-so a module named `scanner' does not also match `scanner_other'.  Crate
-roots and integration test files have no prefix; the cargo target
-arguments narrow those instead."
+so a module named `scanner\=' does not also match `scanner_other\='.  A
+crate root has no module prefix, so its own test names are passed with
+--exact, taken from INDEX; without them cargo would run every test the
+target builds and the parser would throw the rest away."
   (let ((prefix (attest-rust-module-prefix file root)))
-    (unless (string-empty-p prefix) (list (concat prefix "::")))))
+    (if (not (string-empty-p prefix))
+        (list (concat prefix "::"))
+      (let (names)
+        (maphash (lambda (name pos)
+                   (when (equal (plist-get pos :file) file)
+                     (push name names)))
+                 index)
+        (when names (cons "--exact" (sort names #'string<)))))))
 
 (defun attest-rust--target-filters (targets root)
   "Return libtest filter arguments selecting TARGETS in the crate at ROOT.
@@ -171,7 +181,7 @@ and may select more tests than asked for."
          (filters
           (pcase scope
             ('targets (attest-rust--target-filters (plist-get run :targets) root))
-            ('file (attest-rust--file-filters file root)))))
+            ('file (attest-rust--file-filters file root index)))))
     (plist-put run :state (list :index index))
     (list :command (append (list attest-rust-cargo-executable "test" "-q" "--no-fail-fast")
                            selector

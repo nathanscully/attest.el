@@ -11,6 +11,7 @@ A backend is a plist registered with `attest-register-backend`.
 | key | type | purpose |
 |---|---|---|
 | `:predicate` | `() -> bool` | does this backend own the current buffer |
+| `:project-p` | `() -> bool` | optional; does this backend own the buffer's project, test file or not. Resolves a `project` run; falls back to `:predicate` |
 | `:test-file-p` | `(file) -> bool` | which project files are test files |
 | `:root` | `(file) -> dir` | project root; default `project-current` |
 | `:query` | `(LANG . QUERY)` or `(file) -> (LANG . QUERY)` | tree-sitter discovery query |
@@ -23,12 +24,12 @@ A backend is a plist registered with `attest-register-backend`.
 structured events. Core always splits stdout and stderr; the parse
 stream feeds `:parse-line`, the other goes to the output buffer.
 
-| backend | lines | runner output | shipped helper | discovery |
-|---|---|---|---|---|
-| node | 239 | JSON events on stderr | `attest-node-reporter.mjs` (19 lines) | treesit query, JS/TS |
-| vitest | 165 | JSON lines on stderr | `attest-vitest-reporter.mjs` (22 lines) | reuses the node query |
-| rust | 176 | libtest JSON on stdout (`RUSTC_BOOTSTRAP=1`) | none | treesit query, `#[test]` siblings |
-| pytest | 146 | JSON lines on stderr | `attest_pytest.py` (42 lines) | treesit query, `test_*`/`Test*` |
+| backend | runner output | shipped helper | discovery |
+|---|---|---|---|
+| node | JSON events on stderr | `attest-node-reporter.mjs` | treesit query, JS/TS |
+| vitest | JSON lines on stderr | `attest-vitest-reporter.mjs` | reuses the node query |
+| rust | libtest JSON on stdout (`attest-rust-environment`) | none | treesit query, `#[test]` siblings |
+| pytest | JSON lines on stderr | `attest_pytest.py` | treesit query, `test_*`/`Test*` |
 
 Results may carry `:runner-name`, the runner's own name for the test,
 which the backend uses to rerun exactly that test.
@@ -51,14 +52,20 @@ when the runner gives one.
 
 Run:
 
-    (:backend :scope :file :root :targets :files :index :position-index
+    (:backend :scope :file :root :targets :files :index
      :command :directory :process :status :result-ids :results :state
      :start-time :end-time :output-buffer)
+
+A run reports it has started before it builds its command or parses
+anything, because both block: discovery reads every file in scope on the
+Emacs thread, and rust indexes its crate inside `:command`.
 
 Starting a run prunes the cache: for every file it covers, cached
 results whose ids discovery no longer lists are dropped, so a deleted
 or renamed test leaves no stale status. Unreadable files are skipped,
-so a transient read failure never clears results.
+so a transient read failure never clears results, and so are files
+larger than `attest-max-file-size`, where no positions means discovery
+declined to look rather than the tests being gone.
 
 `:results` maps id to the result RUN itself recorded, so
 `attest-run-results` is unaffected by later runs; `attest--results`
@@ -67,8 +74,11 @@ indexes those ids by the file's true name so a consumer can ask for one
 file's results without walking every id. `attest-cache-result` writes
 both tables for a caller that has a result outside a run, and
 `attest-clear-results` forgets everything, or only one file's results
-when called with a prefix argument. `:position-index` maps a file to an
-id-keyed table of its positions.
+when called with a prefix argument, and fires
+`attest-results-changed-functions` with the files it cleared so the
+consumers redraw. `:index` maps a file's true name to
+`(POSITIONS . BY-ID)`: the list in discovery order, which linking needs,
+and an id-keyed table so a lookup does not scan.
 
 `:scope` is `file`, `project` or `targets`. A `targets` run carries
 `:targets`, a list of position plists (`:id`, `:type`, `:file`);
@@ -103,16 +113,20 @@ shallower entries.
 ## Data flow
 
     attest-run
-      -> backend :command
       -> progress: start message, mode-line timer ticking every second
+      -> backend :command (blocking: rust indexes the crate here)
+      -> prune the cache against discovery
       -> make-process, stdout -> *attest* (ansi-color, compilation-minor-mode)
                        stderr -> line splitter -> backend :parse-line
       -> attest--record: puthash id result; run attest-result-functions
       -> sentinel: clear progress, attest-run-finished-functions,
          summary message
 
-Consumers subscribe to three hooks and read the shared cache
-`attest--results` (id -> latest result). Core knows nothing about them.
+Consumers subscribe to four hooks and read the shared cache
+`attest--results` (id -> latest result). Three report a run;
+`attest-results-changed-functions` reports the cache being edited
+outside one, as `attest-clear-results` does, and carries the files that
+changed or nil for all of them. Core knows nothing about the consumers.
 A consumer registers its hook when the feature loads, not when a buffer
 mode turns on, so cache handling never depends on which buffers happen
 to have the mode enabled; the minor modes own rendering alone.
@@ -150,7 +164,7 @@ clears state for backends no longer listed.
 TAP was rejected. The `# Subtest:` line names a node before its result
 line, YAML blocks carry the error, and columns are lost. Node's reporter
 API gives structured events instead, so `attest-node-reporter.mjs`
-(15 lines) prints one JSON event per line. `JSON.stringify` drops an
+prints one JSON event per line. `JSON.stringify` drops an
 Error's `message` and `stack`, so the reporter copies those fields
 explicitly. Both reporters run in one process:
 

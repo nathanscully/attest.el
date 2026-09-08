@@ -158,28 +158,33 @@ test below it."
         (goto-char (point-min))
         (re-search-forward attest-vitest--only-regexp nil t))))))
 
-(defun attest-vitest--run-has-only-p (run)
-  "Return non-nil when any file RUN covers declares `.only\='.
-Computed once per run and kept under :vitest-only."
-  (let ((cached (plist-get run :vitest-only)))
-    (if cached
-        (eq cached 'yes)
-      (let ((found (and (seq-some #'attest-vitest--only-file-p (attest-run-files run))
-                        t)))
-        (plist-put run :vitest-only (if found 'yes 'no))
-        found))))
+(defun attest-vitest--file-has-only-p (run file)
+  "Return non-nil when FILE declares `.only\=', caching the answer in RUN.
+Asked per file rather than per run: `.only\=' in one file excludes tests
+only in that file, and vitest still reports genuine `test.skip\=' in every
+other file of the run."
+  (let ((table (or (plist-get run :vitest-only)
+                   (let ((new (make-hash-table :test 'equal)))
+                     (plist-put run :vitest-only new)
+                     new)))
+        (key (and file (expand-file-name file))))
+    (when key
+      (let ((cached (gethash key table 'missing)))
+        (if (eq cached 'missing)
+            (puthash key (attest-vitest--only-file-p key) table)
+          cached)))))
 
 (defun attest-vitest-parse-line (run line)
   "Parse one reporter LINE from RUN into a result or nil.
-Drops results outside RUN\='s targets, and on a run whose files declare
-`.only\=', drops skipped results too.  vitest rewrites the mode of every
+Drops results outside RUN\='s targets, and drops skipped results from a
+file that declares `.only\='.  vitest rewrites the mode of every
 test `.only\=' excludes to `skip\=' before any reporter sees it, so an
 excluded test is indistinguishable from one the author wrote as
 `test.skip\='.  Recording those would overwrite the cached status of
 tests that did not run; leaving them out keeps the last real status."
   (when-let* ((result (attest-node-parse-scoped-line run line)))
     (unless (and (memq (plist-get result :status) '(skipped todo))
-                 (attest-vitest--run-has-only-p run))
+                 (attest-vitest--file-has-only-p run (plist-get result :file)))
       result)))
 
 (attest-register-backend 'vitest

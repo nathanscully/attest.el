@@ -130,7 +130,9 @@ inside the same form you inspect from; it changes the current buffer.
 ## Known limits
 
 - Rust project scope parses every `src/` and `tests/` file synchronously
-  before cargo starts (6.0 ms per file measured on `stress/cargo`).
+  inside `:command` before cargo starts (395 ms for the 40 files of
+  `stress/cargo`, cold). The run reports itself started first, so the
+  wait is announced, and the parse cache makes a repeat run cheap.
 - vitest reports `-t`-excluded tests as skipped; `attest-target-result-p`
   in core filters them to the run's scope. A `.only` in a file or project
   run is detected from the source, since vitest rewrites the mode during

@@ -126,6 +126,13 @@ Called from the process filter, so a function here must be fast: slow
 work blocks reading the runner\='s output.  It must not call
 `attest-run', which would kill the run being reported.")
 
+(defvar attest-results-changed-functions nil
+  "Abnormal hook called with a list of files whose cached results changed.
+A nil list means every file.  Fired when the cache is edited outside a
+run, as `attest-clear-results' does; consumers redraw the files named.
+A run reports through `attest-result-functions' and
+`attest-run-finished-functions' instead.")
+
 (defvar attest-run-finished-functions nil
   "Abnormal hook called with the run plist when the test process exits.
 The run\='s :status is `finished', `killed' or `error' by then, and
@@ -446,15 +453,15 @@ on; BY-ID maps each id to its position so a lookup does not scan."
                    (let ((table (make-hash-table :test 'equal)))
                      (plist-put run :index table)
                      table)))
-        (file (expand-file-name file)))
-    (let ((cached (gethash file index 'missing)))
+        (key (attest--file-key file)))
+    (let ((cached (gethash key index 'missing)))
       (if (not (eq cached 'missing))
           cached
         (let ((positions (attest-file-positions file (plist-get run :backend)))
               (by-id (make-hash-table :test 'equal)))
           (dolist (pos positions)
             (puthash (plist-get pos :id) pos by-id))
-          (puthash file (cons positions by-id) index))))))
+          (puthash key (cons positions by-id) index))))))
 
 (defun attest-run-file-positions (run file)
   "Return the positions of FILE for RUN, parsing FILE at most once per run."
@@ -480,8 +487,20 @@ A `project' run lists its :files, a `targets' run the files of its
   (cdr (attest--run-file-index run file)))
 
 (defun attest-run-position (run id)
-  "Return the position with ID discovered for RUN, or nil."
-  (gethash id (attest-run-position-table run (attest-id-file id))))
+  "Return the position with ID discovered for RUN, or nil.
+A runner may name a file differently from discovery, so when the id does
+not match directly the file\='s positions are searched by name."
+  (or (gethash id (attest-run-position-table run (attest-id-file id)))
+      (let ((names (attest-id-names id))
+            found)
+        (dolist (file (attest-run-files run))
+          (when (and file (not found))
+            (maphash (lambda (_key pos)
+                       (unless found
+                         (when (equal (attest-id-names (plist-get pos :id)) names)
+                           (setq found pos))))
+                     (attest-run-position-table run file))))
+        found)))
 
 (defun attest-position-at-point (&optional positions)
   "Return the innermost position in POSITIONS containing point.
@@ -530,9 +549,11 @@ same file lands on one entry."
 (defun attest-cache-result (result)
   "Store RESULT in the cache and its file index, outside any run.
 `attest--record' is the path a runner takes; this is for a caller that
-has a result already, such as a test seeding known state."
+has a result already, such as a test seeding known state.  An id already
+cached under another file is moved, so the old file keeps no ghost."
   (let ((id (plist-get result :id)))
     (unless id (error "Attest: result without :id: %S" result))
+    (attest--forget-stale-file id (plist-get result :file))
     (puthash id result attest--results)
     (puthash id t (attest--file-ids (plist-get result :file)))
     result))
@@ -564,6 +585,13 @@ FILE rather than the number of results known."
     (nreverse acc)))
 
 ;;;###autoload
+(defun attest--forget-stale-file (id file)
+  "Drop ID from its old file index when FILE is not where it was cached."
+  (when-let* ((previous (gethash id attest--results)))
+    (unless (equal (attest--file-key (plist-get previous :file))
+                   (attest--file-key file))
+      (attest--forget-result id))))
+
 (defun attest-clear-results (&optional file)
   "Forget every cached result, or only those recorded for FILE.
 Interactively with a prefix argument, clear the current buffer\='s file."
@@ -573,7 +601,8 @@ Interactively with a prefix argument, clear the current buffer\='s file."
         (attest--forget-result (plist-get result :id)))
     (clrhash attest--results)
     (clrhash attest--results-by-file))
-  (run-hook-with-args 'attest-run-finished-functions attest--last-run))
+  (run-hook-with-args 'attest-results-changed-functions
+                      (and file (list (expand-file-name file)))))
 
 (defun attest-last-run ()
   "Return the most recent run plist."
@@ -611,10 +640,7 @@ a fallback."
       (unless (plist-get result :type)
         (plist-put result :type (plist-get pos :type))))
     (unless (plist-get result :type) (plist-put result :type 'test))
-    (let ((previous (gethash id attest--results)))
-      (when (and previous (not (equal (attest--file-key (plist-get previous :file))
-                                      (attest--file-key (plist-get result :file)))))
-        (attest--forget-result id)))
+    (attest--forget-stale-file id (plist-get result :file))
     (puthash id result attest--results)
     (puthash id t (attest--file-ids (plist-get result :file)))
     (let ((table (or (plist-get run :results)
@@ -663,15 +689,23 @@ knows nothing about ROOT the directory is walked instead."
 (defvar attest--progress-timer nil
   "Timer refreshing the mode line while a run is in flight.")
 
+(defvar-local attest--progress-mode-line nil
+  "The buffer\='s `mode-line-process' before attest appended to it.
+Restored on stop, so a string value comes back as a string rather than
+the one-element list appending would leave.")
+
 (defvar-local attest--progress nil
   "Mode line construct shown while a run covering this buffer is active.")
 
 (defun attest--progress-buffers (run)
-  "Return the live buffers RUN covers."
-  (let ((files (attest-run-files run)))
+  "Return the live buffers RUN covers.
+Compared by true name, so a buffer visiting the same file under another
+spelling still shows the indicator."
+  (let ((keys (delq nil (mapcar #'attest--file-key (attest-run-files run)))))
     (seq-filter (lambda (buffer)
                   (with-current-buffer buffer
-                    (and buffer-file-name (member buffer-file-name files))))
+                    (and buffer-file-name
+                         (member (attest--file-key buffer-file-name) keys))))
                 (buffer-list))))
 
 (defun attest--progress-update (run)
@@ -693,7 +727,9 @@ unresponsive for that stretch, so it must not also be silent."
   (message "attest: running %s..." (attest-run-description run))
   (dolist (buffer (attest--progress-buffers run))
     (with-current-buffer buffer
-      (unless (memq 'attest--progress mode-line-process)
+      (unless (and (listp mode-line-process)
+                   (memq 'attest--progress mode-line-process))
+        (setq-local attest--progress-mode-line mode-line-process)
         (setq-local mode-line-process
                     (append (if (listp mode-line-process)
                                 (copy-sequence mode-line-process)
@@ -712,9 +748,10 @@ unresponsive for that stretch, so it must not also be silent."
   (dolist (buffer (attest--progress-buffers run))
     (with-current-buffer buffer
       (setq attest--progress nil)
-      (when (consp mode-line-process)
-        (setq-local mode-line-process
-                    (remq 'attest--progress mode-line-process)))))
+      (when (and (listp mode-line-process)
+                 (memq 'attest--progress mode-line-process))
+        (setq-local mode-line-process attest--progress-mode-line))
+      (kill-local-variable 'attest--progress-mode-line)))
   (force-mode-line-update t))
 
 (defun attest-target-result-p (run result)
@@ -736,9 +773,13 @@ keeps those out of the cache."
   "Drop cached results for FILE that RUN\='s discovery no longer lists.
 Discovery is authoritative: a test deleted or renamed since the last run
 keeps no stale status.  Unreadable files are left alone so a transient
-read failure never clears results."
+read failure never clears results, and so are files discovery skips for
+size: no positions there means nothing was discovered, not that the
+tests are gone."
   (let ((file (expand-file-name file)))
-    (when (or (find-buffer-visiting file) (file-readable-p file))
+    (when (and (or (find-buffer-visiting file) (file-readable-p file))
+               (or (find-buffer-visiting file)
+                   (attest--parseable-size-p file)))
       (let ((known (attest-run-position-table run file))
             (stale nil))
         (dolist (result (attest-results-for-file file))
@@ -798,7 +839,7 @@ Rebinds g, which `special-mode' gives to `revert-buffer', to rerun.")
                  1 2 3))
   (setq-local compilation-error-regexp-alist
               (cons 'attest-file-url compilation-error-regexp-alist))
-  (setq-local ansi-color-context nil)
+  (setq-local ansi-color-context-region nil)
   (compilation-minor-mode 1))
 
 (defun attest--trim-output ()
@@ -952,8 +993,25 @@ missing these would silently lose every key set during the run.")
 (defun attest--start (run)
   "Start the process for RUN according to its backend."
   (attest--check-run run)
+  (plist-put run :partial-stdout "")
+  (plist-put run :partial-stderr "")
+  (plist-put run :start-time (float-time))
+  (plist-put run :status 'running)
+  (when attest-save-before-run
+    (let ((root (plist-get run :root)))
+      (save-some-buffers
+       t (lambda ()
+           (and buffer-file-name
+                (file-in-directory-p buffer-file-name root))))))
+  (setq attest--last-run run)
+  (attest--progress-start run)
   (let* ((props (attest-backend-props (plist-get run :backend)))
-         (spec (funcall (plist-get props :command) run))
+         (spec (condition-case err
+                   (funcall (plist-get props :command) run)
+                 ((error quit)
+                  (plist-put run :status 'error)
+                  (attest--progress-stop run)
+                  (signal (car err) (cdr err)))))
          (command (plist-get spec :command))
          (directory (or (plist-get spec :directory) (plist-get run :root)))
          (parse-stream (or (plist-get spec :parse-stream) 'stdout))
@@ -961,19 +1019,7 @@ missing these would silently lose every key set during the run.")
     (unless command (error "Attest: backend `%s' produced no command" (plist-get run :backend)))
     (plist-put run :command command)
     (plist-put run :directory directory)
-    (plist-put run :partial-stdout "")
-    (plist-put run :partial-stderr "")
-    (plist-put run :start-time (float-time))
-    (plist-put run :status 'running)
     (plist-put run :output-buffer (attest--output-buffer run))
-    (when attest-save-before-run
-      (let ((root (plist-get run :root)))
-        (save-some-buffers
-         t (lambda ()
-             (and buffer-file-name
-                  (file-in-directory-p buffer-file-name root))))))
-    (setq attest--last-run run)
-    (attest--progress-start run)
     (attest--prune-run-scope run)
     (run-hook-with-args 'attest-run-started-functions run)
     (condition-case err

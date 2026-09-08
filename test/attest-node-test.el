@@ -245,11 +245,14 @@ them."
                           "\n")))
     (with-temp-buffer
       (insert raw "\n")
-      (let ((status (call-process-region
-                     (point-min) (point-max) attest-node-executable
-                     t t nil
-                     (expand-file-name "replay.mjs" attest-node-test--concurrent-dir)
-                     reporter)))
+      (let* ((process-environment
+              (seq-remove (lambda (v) (string-prefix-p "NODE_OPTIONS=" v))
+                          process-environment))
+             (status (call-process-region
+                      (point-min) (point-max) attest-node-executable
+                      t t nil
+                      (expand-file-name "replay.mjs" attest-node-test--concurrent-dir)
+                      reporter)))
         (unless (eq status 0)
           (ert-fail (format "replay.mjs exited %S: %s" status (buffer-string)))))
       (split-string (buffer-string) "\n" t))))
