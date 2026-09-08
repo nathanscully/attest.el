@@ -141,8 +141,8 @@ backend\='s diagnostics; those are put back."
 ;;;###autoload
 (define-minor-mode attest-flymake-mode
   "Show attest failures as flymake diagnostics in this buffer.
-Diagnostics appear only while `flymake-mode' is also on; enabling this
-alone is not enough.  See `attest-flymake-auto-enable-flymake'."
+Diagnostics need `flymake-mode' too, which this turns on unless
+`attest-flymake-auto-enable-flymake' is nil."
   :lighter nil
   (if attest-flymake-mode
       (progn
@@ -164,7 +164,27 @@ alone is not enough.  See `attest-flymake-auto-enable-flymake'."
   attest-flymake-mode attest-flymake--maybe-enable
   :group 'attest)
 
+(defun attest-flymake--results-changed (files)
+  "Republish diagnostics for FILES, or drop them all.
+FILES is nil when the whole cache changed, which leaves nothing to
+report: every list-only entry attest owns goes, and every live buffer
+running this backend rechecks."
+  (if files
+      (dolist (file files)
+        (attest-flymake--drop-list-only file)
+        (when-let* ((buffer (find-buffer-visiting file)))
+          (with-current-buffer buffer
+            (when (and attest-flymake-mode flymake-mode)
+              (flymake-start nil t)))))
+    (dolist (entry (copy-sequence flymake-list-only-diagnostics))
+      (attest-flymake--drop-list-only (car entry)))
+    (dolist (buffer (buffer-list))
+      (with-current-buffer buffer
+        (when (and attest-flymake-mode flymake-mode)
+          (flymake-start nil t))))))
+
 (add-hook 'attest-run-finished-functions #'attest-flymake--refresh)
+(add-hook 'attest-results-changed-functions #'attest-flymake--results-changed)
 
 (provide 'attest-flymake)
 ;;; attest-flymake.el ends here

@@ -17,7 +17,7 @@
 (attest-register-backend 'process-test
   :predicate #'ignore
   :test-file-p #'ignore
-  :root (lambda () temporary-file-directory)
+  :root (lambda (_file) temporary-file-directory)
   :query (lambda (_file) (cons 'javascript '((identifier) @name)))
   :command (lambda (_run) attest-process-test--command)
   :parse-line

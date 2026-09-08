@@ -110,6 +110,17 @@
     (dolist (result (attest-results-for-file buffer-file-name))
       (attest-status--place result (plist-get result :status)))))
 
+(defun attest-status--results-changed (files)
+  "Rebuild markers in the buffers visiting FILES, or in every buffer.
+FILES is nil when the whole cache changed."
+  (let ((keys (and files (mapcar #'attest--file-key files))))
+    (dolist (buffer (buffer-list))
+      (with-current-buffer buffer
+        (when (and attest-status-mode buffer-file-name
+                   (or (null keys)
+                       (member (attest--file-key buffer-file-name) keys)))
+          (attest-status--render-buffer))))))
+
 (defun attest-status--on-result (_run result)
   "Mark RESULT in the buffer visiting its file, if any."
   (when-let* ((file (plist-get result :file))
@@ -154,6 +165,7 @@ last run leaves no overlay behind."
 
 (add-hook 'attest-result-functions #'attest-status--on-result)
 (add-hook 'attest-run-started-functions #'attest-status--on-start)
+(add-hook 'attest-results-changed-functions #'attest-status--results-changed)
 
 (provide 'attest-status)
 ;;; attest-status.el ends here
