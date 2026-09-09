@@ -62,13 +62,13 @@ shown.  Set to nil to manage `flymake-mode' yourself."
 (defun attest-flymake--message (result)
   "Return the diagnostic text for RESULT."
   (format "%s: %s"
-          (string-join (attest-id-names (plist-get result :id)) " > ")
+          (string-join (attest-id-names (attest-result-case-id result)) " > ")
           (string-trim (or (plist-get result :message) "failed"))))
 
 (defun attest-flymake--failures (file)
   "Return the failed test results recorded for FILE."
-  (seq-filter (lambda (r) (and (eq (plist-get r :status) 'failed)
-                               (eq (plist-get r :type) 'test)))
+  (seq-filter (lambda (r) (and (eq (attest-result-status r) 'failed)
+                               (eq (attest-result-type r) 'test)))
               (attest-results-for-file file)))
 
 (defun attest-flymake--buffer-diagnostics ()
@@ -96,7 +96,7 @@ diagnostics of a backend that merely stops running.")
 (defun attest-flymake--list-only-diagnostic (result)
   "Return a file-locus diagnostic for RESULT, for unvisited files."
   (let ((location (plist-get result :location)))
-    (flymake-make-diagnostic (plist-get result :file)
+    (flymake-make-diagnostic (attest-result-file result)
                              (cons (or (car location) (plist-get result :line) 1)
                                    (cdr location))
                              nil
@@ -109,7 +109,7 @@ diagnostics of a backend that merely stops running.")
 Attest passes the result plist as the diagnostic data, so its own
 entries carry an :id."
   (let ((data (flymake-diagnostic-data diagnostic)))
-    (and (listp data) (plist-get data :id) t)))
+    (and (listp data) (attest-result-case-id data) t)))
 
 (defun attest-flymake--drop-list-only (file)
   "Remove only attest\='s list-only diagnostics for FILE.
@@ -126,7 +126,7 @@ backend\='s diagnostics; those are put back."
   "Republish diagnostics for every file touched by RUN."
   (let ((files (delete-dups
                 (delq nil (append (attest-run-files run)
-                                  (mapcar (lambda (r) (plist-get r :file))
+                                  (mapcar #'attest-result-file
                                           (attest-run-results run)))))))
     (dolist (file files)
       (attest-flymake--drop-list-only file)

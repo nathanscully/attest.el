@@ -38,11 +38,12 @@
     (should (eq (plist-get teardown :status) 'failed))
     (should (equal (plist-get teardown :message) "RuntimeError: teardown boom"))))
 
-(ert-deftest attest-pytest-ids-strip-parameters-and-keep-classes ()
+(ert-deftest attest-pytest-ids-preserve-parameters-and-classes ()
   (let* ((results (attest-pytest-test--results))
          (ids (mapcar (lambda (r) (plist-get r :id)) results))
          (f attest-pytest-test--file))
-    (should (= (cl-count (attest-make-id f "test_param") ids :test #'equal) 2))
+    (should (member (attest-make-id f "test_param[1]") ids))
+    (should (member (attest-make-id f "test_param[2]") ids))
     (should (member (attest-make-id f "TestScanner" "test_raises") ids))))
 
 (ert-deftest attest-pytest-failure-location-and-message ()
@@ -65,7 +66,7 @@
     (python-ts-mode)
     (let* ((positions (attest-positions))
            (discovered (mapcar (lambda (p) (plist-get p :id)) positions))
-           (reported (delete-dups (mapcar (lambda (r) (plist-get r :id))
+           (reported (delete-dups (mapcar (lambda (r) (plist-get r :definition-id))
                                           (attest-pytest-test--results)))))
       (should (equal (mapcar (lambda (p) (plist-get p :type)) positions)
                      '(test test test test namespace test test test)))

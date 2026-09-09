@@ -120,7 +120,9 @@ rather than only from a test file."
   (let* ((root (plist-get run :root))
          (selection
           (pcase (plist-get run :scope)
-            ('targets (mapcar (lambda (target) (attest-pytest--nodeid (plist-get target :id) root))
+            ('targets (mapcar (lambda (target)
+                               (or (plist-get target :runner-name)
+                                   (attest-pytest--nodeid (plist-get target :id) root)))
                               (plist-get run :targets)))
             (_ (mapcar (lambda (f) (file-relative-name f root)) (attest-run-files run))))))
     (list :command (append attest-pytest-command
@@ -140,11 +142,14 @@ rather than only from a test file."
 (defun attest-pytest--result (run event)
   "Return a result for a pytest EVENT in RUN."
   (let* ((rootdir (or (alist-get 'rootdir event) (plist-get run :directory)))
-         (parts (split-string (alist-get 'nodeid event) "::"))
+         (nodeid (alist-get 'nodeid event))
+         (parameter-start (string-match "\\[" nodeid))
+         (parts (split-string (if parameter-start (substring nodeid 0 parameter-start) nodeid) "::"))
          (file (expand-file-name (car parts) rootdir))
          (names (cdr parts))
-         (id-names (append (butlast names)
-                           (list (attest-pytest--strip-params (car (last names))))))
+         (case-names (append (butlast names)
+                             (list (concat (car (last names))
+                                           (and parameter-start (substring nodeid parameter-start))))))
          (location (alist-get 'location event))
          (crash (alist-get 'crash event))
          (status (pcase (alist-get 'outcome event)
@@ -152,9 +157,12 @@ rather than only from a test file."
                    ("failed" 'failed)
                    (_ 'skipped)))
          (crash-file (and crash (expand-file-name (alist-get 'path crash) rootdir))))
-    (append (list :id (apply #'attest-make-id file id-names)
+    (append (list :id (apply #'attest-make-id file case-names)
+                  :definition-id (apply #'attest-make-id file names)
+                  :runner-name nodeid
+                  :phase (alist-get 'when event)
                   :type 'test
-                  :name (car (last names))
+                  :name (car (last case-names))
                   :status status
                   :file file
                   :line (1+ (or (nth 1 location) 0))
@@ -173,6 +181,7 @@ Other stderr lines go to the output buffer."
       (attest-pytest--result run event))))
 
 (attest-register-backend 'pytest
+  :test-failure-exit-codes '(1)
   :predicate #'attest-pytest--buffer-p
   :project-p #'attest-pytest--project-p
   :test-file-p #'attest-pytest-test-file-p

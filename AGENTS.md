@@ -11,24 +11,25 @@ Read in this order before changing anything:
    built-in provides each feature, what is deliberately not built.
 2. `ASSESSMENT.md`: what works, where the built-ins thesis strains,
    the tree-sitter decision, comparison with verdict and test-cockpit.
-3. `attest.el`: the core. Everything else is a backend or a consumer of
-   it.
+3. `lisp/core/`: the core, split into model, backend registry,
+   discovery, results and run lifecycle. `lisp/attest.el` is the
+   command surface over it; everything else is a backend or a consumer.
 
 ## Layout
 
 | path | role |
 |---|---|
-| `attest.el` | registry, ids, discovery + per-run position index, process runner, result cache, commands |
-| `attest-node.el` + `attest-node-reporter.mjs` | node:test backend; reporter tracks nesting and emits `attest:test` events on stderr |
-| `attest-vitest.el` + `attest-vitest-reporter.mjs` | vitest backend; same event shape, reuses the node query and parser; registers after node |
-| `attest-rust.el` | cargo test via libtest JSON (`attest-rust-environment` sets `RUSTC_BOOTSTRAP=1`); maps names through the core index |
-| `attest-pytest.el` + `attest_pytest.py` | pytest backend; plugin loaded with `-p`, JSON on stderr |
-| `attest-flymake.el`, `attest-status.el`, `attest-list.el` | consumers; subscribe to hooks, read `attest--results` |
-| `attest-all.el` | one entry point that requires the core, all backends and all consumers |
+| `lisp/core/` | model, backend registry, discovery, results and run lifecycle |
+| `lisp/backends/{node,vitest,cargo,pytest}/` | framework backends and bundled reporters/plugins |
+| `lisp/backends/shared/` | shared JavaScript discovery/parser helpers |
+| `lisp/consumers/` | flymake, fringe status and tabulated results consumers |
+| `lisp/attest-all.el` | one entry point that loads the core, backends and consumers |
 | `test/` | ert tests; parser tests replay `test/fixtures/*-events.jsonl`, one integration test per runner |
 | `stress/` | one real project per runner (`node`, `vitest`, `cargo`, `pytest`); `test/attest-stress-test.el` runs them via `make stress` |
 | `flake.nix` | dev shell and `nix flake check`; pins Emacs, grammars and runners |
 | `assets/live-tlox.png` | screenshot of a live run in the daemon |
+| `scripts/package.el` | stages `build/attest-0.1.0/` for `make package` |
+| `docs/` | domain vocabulary (`CONTEXT.md`) and, under `reviews/`, the reviews and 1.0 roadmap |
 | `scratch/` | gitignored working notes (`PLAN.md`) |
 
 ## Build and test
@@ -37,6 +38,8 @@ Read in this order before changing anything:
 make all          # byte-compile (warnings are errors), checkdoc, ert
 make test         # ert only
 make stress       # live runs against stress/; not part of make all
+make package      # stage build/attest-0.1.0.tar with generated autoloads
+make package-test # install that tar into a clean Emacs and load it
 
 nix develop -c make all   # same, with the flake's pinned toolchain
 nix flake check           # make all on a clean Emacs in the nix sandbox

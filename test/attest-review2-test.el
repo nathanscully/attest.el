@@ -57,7 +57,7 @@ never saw."
                        "one")))
       (should (attest-run-position run (attest-make-id real "one")))
       (should (attest-run-position run (attest-make-id link "one")))
-      (should (attest-run-position run elsewhere)))))
+      (should-not (attest-run-position run elsewhere)))))
 
 (ert-deftest attest-clear-results-tells-the-consumers ()
   "Clearing fires the cache hook with the files it cleared."

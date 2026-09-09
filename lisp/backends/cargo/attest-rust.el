@@ -123,7 +123,124 @@ Crate roots and integration test files map to the empty string."
   "Return the libtest name of POSITION in the crate at ROOT."
   (let ((prefix (attest-rust-module-prefix (plist-get position :file) root))
         (names (string-join (attest-rust--position-names position) "::")))
-    (if (string-empty-p prefix) names (concat prefix "::" names))))
+    (or (plist-get position :runner-name)
+        (if (string-empty-p prefix) names (concat prefix "::" names)))))
+
+(defun attest-rust--plan (run continuation)
+  "Resolve Cargo targets asynchronously for RUN, then call CONTINUATION."
+  (attest-prepare-command
+   run (list attest-rust-cargo-executable "metadata" "--no-deps" "--format-version" "1")
+   (lambda (text)
+     (funcall continuation
+              (attest-rust--metadata-plan
+               run (json-parse-string text :object-type 'alist :array-type 'list
+                                      :false-object nil :null-object nil))))))
+
+(defun attest-rust--target-files (files target)
+  "Return the FILES potentially compiled by Cargo TARGET."
+  (let* ((source (alist-get 'src_path target))
+         (directory (file-name-directory source))
+         (kind (car (alist-get 'kind target))))
+    (seq-filter
+     (lambda (file)
+       (or (file-equal-p file source)
+           (and (file-in-directory-p file directory)
+                (not (member (file-name-nondirectory file) '("lib.rs" "main.rs")))
+                (not (string-match-p "/src/bin/" file))
+                (not (equal kind "test")))))
+     files)))
+
+(defun attest-rust--crate-files (root)
+  "Return every rust test file under ROOT.
+Ambiguity between execution targets is a property of the crate, so it
+must be judged over all of its files rather than the subset one run
+happens to cover."
+  (attest--project-test-files 'rust root))
+
+(defun attest-rust--crate-targets (run metadata)
+  "Return every testable Cargo target under RUN\='s root, from METADATA.
+Each entry is (KEY MANIFEST KIND NAME INDEX FILES), covering the whole
+crate rather than the files this run selected."
+  (let ((crate (attest-rust--crate-files (plist-get run :root)))
+        targets)
+    (dolist (package (alist-get 'packages metadata))
+      (let ((manifest (alist-get 'manifest_path package)))
+        (when (file-in-directory-p manifest (plist-get run :root))
+          (dolist (target (alist-get 'targets package))
+            (let ((kind (car (alist-get 'kind target)))
+                  (name (alist-get 'name target)))
+              (when (and (member kind '("lib" "bin" "test"))
+                         (alist-get 'test target))
+                (let ((files (attest-rust--target-files crate target)))
+                  (when files
+                    (push (list (concat (alist-get 'name package) "/" kind "/" name)
+                                manifest kind name
+                                (attest-rust--index
+                                 (list :backend 'rust :scope 'project :files files
+                                       :root (file-name-directory manifest)))
+                                files
+                                (alist-get 'src_path target))
+                          targets)))))))))
+    (nreverse targets)))
+
+(defun attest-rust--metadata-plan (run metadata)
+  "Build isolated invocations for RUN from Cargo METADATA."
+  (let* ((root (plist-get run :root))
+         (crate (attest-rust--crate-targets run metadata))
+         (ambiguous (attest-rust--ambiguous-names crate))
+         (covered (attest-run-files run))
+         specs)
+    (pcase-dolist (`(,key ,manifest ,kind ,name ,_index ,crate-files ,source) crate)
+      (let* ((files (seq-filter (lambda (file)
+                                  (seq-some (lambda (other) (file-equal-p file other))
+                                            covered))
+                                crate-files))
+             (selected (seq-filter
+                        (lambda (p)
+                          (and (member (plist-get p :file) files)
+                               (or (not (plist-get p :execution-target))
+                                   (equal (plist-get p :execution-target) key))))
+                        (plist-get run :targets))))
+        (when (and files
+                   (or (not (eq (plist-get run :scope) 'targets)) selected))
+          (let* ((index (attest-rust--index
+                         (list :backend 'rust :scope 'project :files files
+                               :root (file-name-directory manifest))))
+                 (filters (pcase (plist-get run :scope)
+                            ('targets (attest-rust--target-filters selected root))
+                            ('file (let (names)
+                                     (maphash (lambda (n _) (push n names)) index)
+                                     (cons "--exact" (or names '("__attest_no_tests__"))))))))
+            (push (list :command
+                        (append (list attest-rust-cargo-executable "test" "-q"
+                                      "--manifest-path" manifest)
+                                (if (equal kind "lib") '("--lib")
+                                  (list (concat "--" kind) name))
+                                attest-rust-cargo-args '("--") filters
+                                '("-Z" "unstable-options" "--format=json" "--report-time"))
+                        :directory (file-name-directory manifest)
+                        :env attest-rust-environment :parse-stream 'stdout
+                        :state (list :index index :execution-target key
+                                     :ambiguous ambiguous :source source))
+                  specs)))))
+    (unless specs (user-error "Attest: no Cargo targets match the selection"))
+    (list :invocations (nreverse specs))))
+
+(defun attest-rust--ambiguous-names (crate)
+  "Return the libtest names CRATE resolves in more than one execution target.
+Qualifying an id must not depend on which files a run happens to cover,
+so the set is computed once over every target in the crate and shared by
+each invocation the run launches."
+  (let ((seen (make-hash-table :test 'equal))
+        (ambiguous (make-hash-table :test 'equal)))
+    (pcase-dolist (`(,key ,_manifest ,_kind ,_name ,index . ,_) crate)
+      (maphash (lambda (name _position)
+                 (let ((previous (gethash name seen)))
+                   (cond ((null previous) (puthash name key seen))
+                         ((not (equal previous key))
+                          (puthash name t ambiguous)))))
+               index))
+    ambiguous))
 
 (defun attest-rust--index (run)
   "Return a hash table from libtest name to position for RUN's files."
@@ -209,6 +326,7 @@ Returns nil when the run\='s index does not know the test, since cargo
 selects tests by name over whole targets and reports names this run did
 not ask for."
   (let* ((name (alist-get 'name event))
+         (target (plist-get (plist-get run :state) :execution-target))
          (position (gethash name (plist-get (plist-get run :state) :index)))
          (file (plist-get position :file))
          (names (and position (attest-rust--position-names position)))
@@ -220,7 +338,14 @@ not ask for."
     (when (and stdout (not (string-empty-p stdout)))
       (attest-append-output run (concat stdout "\n")))
     (when position
-      (append (list :id (apply #'attest-make-id file names)
+      (let* ((ambiguous (plist-get (plist-get run :state) :ambiguous))
+             (id-names (if (and ambiguous (gethash name ambiguous))
+                           (append (list (concat "@cargo/" target)) names)
+                         names)))
+       (append (list :id (apply #'attest-make-id file id-names)
+                    :definition-id (apply #'attest-make-id file names)
+                    :execution-target target
+                    :runner-name name
                     :type 'test
                     :name (car (last names))
                     :status status
@@ -228,7 +353,7 @@ not ask for."
                     :duration (when-let* ((s (alist-get 'exec_time event))) (* 1000 s)))
               (when (eq status 'failed)
                 (list :message (or (and stdout (string-trim stdout)) "test failed")
-                      :location (attest-rust--panic-location stdout run file)))))))
+                      :location (attest-rust--panic-location stdout run file))))))))
 
 (defun attest-rust--doctest-p (name)
   "Return non-nil when libtest NAME denotes a doc test.
@@ -245,6 +370,8 @@ Other stdout lines go to the output buffer."
       (attest-rust--result run event))))
 
 (attest-register-backend 'rust
+  :plan #'attest-rust--plan
+  :test-failure-exit-codes '(101)
   :predicate #'attest-rust--buffer-p
   :project-p #'attest-rust--project-p
   :test-file-p #'attest-rust-test-file-p

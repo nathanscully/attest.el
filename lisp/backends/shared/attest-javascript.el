@@ -1,4 +1,4 @@
-;;; attest-node.el --- node --test backend for attest -*- lexical-binding: t; -*-
+;;; attest-javascript.el --- Shared JavaScript framework support -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2026 Nathan Scully
 
@@ -23,14 +23,7 @@
 
 ;;; Commentary:
 
-;; Runs tests with Node's built-in runner (`node --test').  Two
-;; reporters run at once: `spec' writes human-readable output to stdout
-;; for the output buffer, and the bundled attest-node-reporter.mjs
-;; writes one `attest:test' JSON event per finished test to stderr.
-;; The reporter tracks suite nesting and flattens the error's cause so
-;; the event already carries the full name path, a state and a message;
-;; attest-vitest-reporter.mjs emits the same shape, and attest-vitest.el
-;; reuses `attest-node--parse-line'.
+;; Shared discovery, selection and event parsing without registering a backend.
 
 ;;; Code:
 
@@ -40,16 +33,6 @@
   "Node test runner backend for attest."
   :group 'attest
   :prefix "attest-node-")
-
-(defcustom attest-node-executable "node"
-  "Node program that runs `node --test'."
-  :type 'string
-  :package-version '(attest . "0.1.0"))
-
-(defcustom attest-node-extra-args nil
-  "Arguments inserted after `--test'."
-  :type '(repeat string)
-  :package-version '(attest . "0.1.0"))
 
 (defcustom attest-node-env '("FORCE_COLOR=1")
   "Environment entries added when running tests."
@@ -83,11 +66,6 @@ each with a `spec\=' spelling too."
 called; vitest projects conventionally use `tests/\=' the same way."
   :type 'regexp
   :package-version '(attest . "0.1.0"))
-
-(defconst attest-node--reporter
-  (expand-file-name "attest-node-reporter.mjs"
-                    (file-name-directory (or load-file-name buffer-file-name)))
-  "Absolute path of the bundled JSON-lines reporter.")
 
 (defconst attest-node--query
   '(((call_expression
@@ -148,16 +126,6 @@ node_modules."
        (apply #'derived-mode-p attest-node--modes)
        (attest-node-test-file-p buffer-file-name)))
 
-(defun attest-node--project-p ()
-  "Return non-nil when the current buffer sits in a node package.
-Any file in the package qualifies, so a project run can start from
-source rather than only from a test file.  Vitest registers later and is
-asked first, so a vitest package is claimed there."
-  (and buffer-file-name
-       (apply #'derived-mode-p attest-node--modes)
-       (attest-node-root buffer-file-name)
-       t))
-
 (defun attest-node--query (file)
   "Return the discovery query for FILE's language."
   (cons (pcase (file-name-extension file)
@@ -170,36 +138,6 @@ asked first, so a vitest package is claimed there."
   "Return STRING escaped for use in a JavaScript regular expression.
 Used for `--test-name-pattern' here and for `-t' in attest-vitest.el."
   (replace-regexp-in-string "[][.*+?^${}()|\\\\/]" "\\\\\\&" string))
-
-(defun attest-node--name-pattern (target)
-  "Return a --test-name-pattern argument selecting TARGET.
-A test matches exactly; a namespace also matches every test below it."
-  (let ((name (attest-node-regexp-quote
-               (string-join (attest-id-names (plist-get target :id)) " "))))
-    (format "--test-name-pattern=^%s%s" name
-            (if (eq (plist-get target :type) 'namespace) "( |$)" "$"))))
-
-(defun attest-node--command (run)
-  "Return the process spec for RUN."
-  (let* ((scope (plist-get run :scope))
-         (root (plist-get run :root))
-         (files (attest-run-files run))
-         (patterns (and (eq scope 'targets)
-                        (mapcar #'attest-node--name-pattern
-                                (plist-get run :targets)))))
-    (when (and (eq scope 'project) (null files))
-      (user-error "Attest: no test files found under %s" root))
-    (list :command (append (list attest-node-executable "--test")
-                           attest-node-extra-args
-                           (list "--test-reporter=spec"
-                                 "--test-reporter-destination=stdout"
-                                 (concat "--test-reporter=" attest-node--reporter)
-                                 "--test-reporter-destination=stderr")
-                           patterns
-                           (mapcar (lambda (f) (file-relative-name f root)) files))
-          :directory root
-          :env (attest-node-env)
-          :parse-stream 'stderr)))
 
 (defun attest-node--decode-path (path)
   "Return PATH with its percent escapes decoded.
@@ -274,14 +212,5 @@ attest-vitest.el, whose reporter emits the same event shape."
   (when-let* ((result (attest-node--parse-line run line)))
     (and (attest-target-result-p run result) result)))
 
-(attest-register-backend 'node
-  :predicate #'attest-node--buffer-p
-  :project-p #'attest-node--project-p
-  :test-file-p #'attest-node-test-file-p
-  :root #'attest-node-root
-  :query #'attest-node--query
-  :command #'attest-node--command
-  :parse-line #'attest-node-parse-scoped-line)
-
-(provide 'attest-node)
-;;; attest-node.el ends here
+(provide 'attest-javascript)
+;;; attest-javascript.el ends here
