@@ -54,12 +54,13 @@ switch to `attest-rust-cargo-args` instead.
 ## Develop
 
 ```sh
-make all
+nix develop        # the dev shell, with every command and the pinned toolchain
+nix develop -c check   # compile (warnings are errors), checkdoc and ert
 ```
 
-Runs byte-compile, checkdoc and ert. Set `EMACS_TREE_SITTER_GRAMMARS`
-to a directory of grammar libraries if Emacs cannot find `typescript`,
-`rust` or `python`. Integration tests spawn node, cargo, pytest and
+`menu` lists every command in the shell. Without nix, set
+`EMACS_TREE_SITTER_GRAMMARS` to a directory of grammar libraries if
+Emacs cannot find `typescript`, `rust` or `python`. Integration tests spawn node, cargo, pytest and
 vitest when available and skip otherwise; `pnpm install` in
 `test/fixtures/vitest` provides vitest.
 

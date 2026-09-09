@@ -1,66 +1,51 @@
 {
   description = "attest.el, an Emacs test runner with per-language backends";
 
-  inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
+  inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
+    flake-parts.url = "github:hercules-ci/flake-parts";
+    devshell = {
+      url = "github:numtide/devshell";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+  };
 
-  outputs = { self, nixpkgs }:
-    let
+  outputs = inputs@{ flake-parts, devshell, ... }:
+    flake-parts.lib.mkFlake { inherit inputs; } {
+      imports = [ devshell.flakeModule ];
+
       systems = [ "aarch64-darwin" "x86_64-darwin" "x86_64-linux" "aarch64-linux" ];
-      forAllSystems = f: nixpkgs.lib.genAttrs systems (s: f (import nixpkgs { system = s; }));
 
-      # Everything the Makefile needs: a clean batch Emacs, the five grammars
-      # test-helper.el loads via EMACS_TREE_SITTER_GRAMMARS, and the four
-      # runners the integration tests spawn.
-      toolchain = pkgs: rec {
-        emacs = pkgs.emacs-nox;
-        grammars = pkgs.emacsPackages.treesit-grammars.with-grammars (g: with g; [
-          tree-sitter-typescript
-          tree-sitter-tsx
-          tree-sitter-javascript
-          tree-sitter-rust
-          tree-sitter-python
-        ]);
-        runners = [
-          pkgs.nodejs
-          pkgs.cargo
-          pkgs.rustc
-          (pkgs.python3.withPackages (ps: [ ps.pytest ]))
-        ];
-      };
-    in
-    {
-      # `nix develop -c make all` / `-c make stress`. pnpm is here for the
-      # vitest fixture and stress project installs; the check below cannot
-      # fetch node_modules, so vitest coverage lives in this shell.
-      devShells = forAllSystems (pkgs:
-        let t = toolchain pkgs; in {
-          default = pkgs.mkShell {
-            packages = [ t.emacs pkgs.gnumake pkgs.pnpm ] ++ t.runners;
-            env.EMACS_TREE_SITTER_GRAMMARS = "${t.grammars}/lib";
-          };
-        });
+      perSystem = { pkgs, self', ... }:
+        let
+          emacs = import ./nix/emacs.nix { inherit pkgs; };
+        in
+        {
+          # `nix develop` drops into the shell; every command is also
+          # reachable as `nix develop -c <name>`.
+          devshells = import ./nix/devshell.nix { inherit pkgs emacs; };
 
-      # `nix flake check`: byte-compile (warnings as errors), checkdoc and ert
-      # against a store Emacs with nothing from the host. The vitest
-      # integration test skips itself (no node_modules in the sandbox); the
-      # node, cargo and pytest integration tests run for real.
-      checks = forAllSystems (pkgs:
-        let t = toolchain pkgs; in {
-          attest = pkgs.stdenv.mkDerivation {
-            name = "attest-make-all";
-            src = self;
-            nativeBuildInputs = [ t.emacs pkgs.gnumake ] ++ t.runners;
-            EMACS_TREE_SITTER_GRAMMARS = "${t.grammars}/lib";
+          # `nix flake check`: the same commands against a store Emacs with
+          # nothing from the host. The vitest integration test skips itself
+          # here (the sandbox cannot fetch node_modules); node, cargo and
+          # pytest run for real.
+          checks.attest = pkgs.stdenv.mkDerivation {
+            name = "attest-check";
+            src = inputs.self;
+            nativeBuildInputs = [ emacs.emacs ] ++ emacs.runners;
+            EMACS_TREE_SITTER_GRAMMARS = "${emacs.grammars}/lib";
             buildPhase = ''
               runHook preBuild
               export HOME=$TMPDIR
-              make all
+              ${emacs.scripts.compile}
+              ${emacs.scripts.checkdoc}
+              ${emacs.scripts.test}
               runHook postBuild
             '';
             installPhase = "touch $out";
           };
-        });
 
-      formatter = forAllSystems (pkgs: pkgs.nixpkgs-fmt);
+          formatter = pkgs.nixpkgs-fmt;
+        };
     };
 }

@@ -38,4 +38,5 @@ jobs:
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
       - run: nix develop -c pnpm -C test/fixtures/vitest install --frozen-lockfile
       - run: nix develop -c pnpm -C stress/vitest install --frozen-lockfile
-      - run: nix develop -c make all stress
+      - run: nix develop -c check
+      - run: nix develop -c stress
