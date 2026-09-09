@@ -7,8 +7,8 @@ through flymake and lists them in `tabulated-list-mode`. It loads with
 
 ## Evidence
 
-- `make all`: byte-compile with `byte-compile-error-on-warn`, checkdoc
-  clean, 21 ert tests passing (2026-09-01).
+- `nix develop -c check`: byte-compile with `byte-compile-error-on-warn`,
+  checkdoc clean, 21 ert tests passing (2026-09-01).
 - 20 tests parse recorded fixtures. One spawns `node --test` on
   `test/fixtures/demo.test.ts`, waits for the sentinel and checks nine
   streamed results and the failing frame `(10 . 5)`.

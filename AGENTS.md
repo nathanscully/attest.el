@@ -25,25 +25,36 @@ Read in this order before changing anything:
 | `lisp/consumers/` | flymake, fringe status and tabulated results consumers |
 | `lisp/attest-all.el` | one entry point that loads the core, backends and consumers |
 | `test/` | ert tests; parser tests replay `test/fixtures/*-events.jsonl`, one integration test per runner |
-| `stress/` | one real project per runner (`node`, `vitest`, `cargo`, `pytest`); `test/attest-stress-test.el` runs them via `make stress` |
-| `flake.nix` | dev shell and `nix flake check`; pins Emacs, grammars and runners |
+| `stress/` | one real project per runner (`node`, `vitest`, `cargo`, `pytest`); `test/attest-stress-test.el` runs them via the `stress` command |
+| `flake.nix` | flake-parts entry point; dev shell, commands and `nix flake check` |
 | `assets/live-tlox.png` | screenshot of a live run in the daemon |
-| `scripts/package.el` | stages `build/attest-0.1.0/` for `make package` |
+| `nix/` | `emacs.nix` (toolchain, ordered source list) and `devshell.nix` (the commands) |
+| `scripts/package.el` | stages `build/attest-0.1.0/` for the `package` command |
 | `docs/` | domain vocabulary (`CONTEXT.md`) and, under `reviews/`, the reviews and 1.0 roadmap |
 | `scratch/` | gitignored working notes (`PLAN.md`) |
 
 ## Build and test
 
-```sh
-make all          # byte-compile (warnings are errors), checkdoc, ert
-make test         # ert only
-make stress       # live runs against stress/; not part of make all
-make package      # stage build/attest-0.1.0.tar with generated autoloads
-make package-test # install that tar into a clean Emacs and load it
+The dev shell owns the commands; there is no Makefile. `nix develop`
+drops into the shell and prints them, `menu` lists them all, and each is
+also reachable without entering the shell.
 
-nix develop -c make all   # same, with the flake's pinned toolchain
-nix flake check           # make all on a clean Emacs in the nix sandbox
+```sh
+nix develop -c check         # compile (warnings are errors), checkdoc, ert
+nix develop -c ert           # the ert suite only
+nix develop -c stress        # live runs against stress/; not part of check
+nix develop -c package       # stage build/attest-0.1.0.tar with autoloads
+nix develop -c package-test  # install that tar into a clean Emacs
+nix develop -c clean         # drop bytecode and build/
+nix flake check              # the same gate on a clean Emacs in the sandbox
 ```
+
+`nix/emacs.nix` holds the toolchain and the ordered source list every
+command compiles, so the shell and the sandboxed check cannot drift.
+`nix/devshell.nix` defines the commands. Byte-compile order is
+load-bearing: a file must compile after everything it requires. The ert
+command is named `ert`, not `test`, because a shell builtin of that name
+would shadow it and silently succeed.
 
 The stress suite spawns every runner against the projects under
 `stress/` and checks what the fixtures cannot: id parity between
@@ -59,12 +70,13 @@ needs `pnpm install` once.
 
 The flake pins the whole toolchain: Emacs 30 with the five grammars
 (exported as `EMACS_TREE_SITTER_GRAMMARS`), node, cargo, pytest and
-pnpm. `nix flake check` runs `make all` in the build sandbox against
-that clean Emacs, so it catches host assumptions the daemon hides.
+pnpm. `nix flake check` runs compile, checkdoc and ert in the build
+sandbox against that clean Emacs, so it catches host assumptions the
+daemon hides.
 The sandbox cannot fetch node_modules, so the vitest integration test
 skips there; run the suite in the dev shell for vitest coverage.
 CI (`.github/workflows/ci.yml`) runs `nix flake check` on Linux and
-macOS and `make all stress` in the dev shell; setting the
+macOS and `check` then `stress` in the dev shell; setting the
 `CACHIX_CACHE` repo variable and `CACHIX_AUTH_TOKEN` secret turns on
 cachix, and without them the cachix steps are skipped.
 
@@ -79,10 +91,8 @@ Requirements on the machine (`nix develop` provides all of it):
   absent), `pnpm install` in `test/fixtures/vitest` for the vitest
   integration test (skipped if `node_modules/.bin/vitest` is absent).
 
-On this machine pytest is not on PATH; `nix develop -c make all` is
-the simplest fix. Outside the dev shell, run make as
-`nix shell nixpkgs#python3Packages.pytest -c make ...`, prefix PATH
-with a venv's bin, or point `attest-pytest-command` at a venv.
+On this machine pytest is not on PATH, so run the commands through
+`nix develop -c ...` rather than from a bare shell.
 
 If `NODE_OPTIONS` is set in your shell it can break `node --test`;
 use `env -u NODE_OPTIONS node ...` when testing by hand.

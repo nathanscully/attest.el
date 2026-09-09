@@ -6,8 +6,8 @@
 ;; the small fixtures cannot: id parity between discovery and the runner
 ;; over many files, single-target precision, namespace subtrees, volume
 ;; and discovery timing.  Every test spawns the real runner and skips
-;; when its toolchain is missing.  Run with `make stress'; `make test'
-;; does not load this file.
+;; when its toolchain is missing.  Run with the `stress' command; the
+;; `ert' command does not load this file.
 
 ;;; Code:
 
