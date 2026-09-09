@@ -274,5 +274,20 @@ on whether some buffer happens to have the mode on."
         (set-buffer-modified-p nil)
         (kill-buffer)))))
 
+(ert-deftest attest-global-status-mode-has-a-stable-lifecycle ()
+  "Global status mode does not depend on private globalized-mode hooks."
+  (unwind-protect
+      (progn
+        (global-attest-status-mode -1)
+        (global-attest-status-mode 1)
+        (should global-attest-status-mode)
+        (should (memq #'attest-status--maybe-enable
+                      after-change-major-mode-hook))
+        (global-attest-status-mode -1)
+        (should-not global-attest-status-mode)
+        (should-not (memq #'attest-status--maybe-enable
+                          after-change-major-mode-hook)))
+    (global-attest-status-mode -1)))
+
 (provide 'attest-consumers-test)
 ;;; attest-consumers-test.el ends here

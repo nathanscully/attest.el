@@ -55,13 +55,13 @@
   (let* ((location (plist-get result :location))
          (line (or (car location) (plist-get result :line))))
     (list result
-          (vector (attest-list--status-string (plist-get result :status))
+          (vector (attest-list--status-string (attest-result-status result))
                   (if-let* ((ms (plist-get result :duration)))
                       (format "%.1fms" ms)
                     "")
-                  (string-join (attest-id-names (plist-get result :id)) " > ")
+                  (string-join (attest-id-names (attest-result-case-id result)) " > ")
                   (format "%s:%s"
-                          (file-name-nondirectory (plist-get result :file))
+                          (file-name-nondirectory (attest-result-file result))
                           line)))))
 
 (defun attest-list--entries ()
@@ -71,10 +71,10 @@ empties the list rather than leaving the last run on screen."
   (when-let* ((run (attest-last-run)))
     (mapcar #'attest-list--entry
             (seq-filter (lambda (r)
-                          (and (eq (plist-get r :type) 'test)
-                               (attest-result (plist-get r :id))
+                          (and (eq (attest-result-type r) 'test)
+                               (attest-result (attest-result-case-id r))
                                (or (not attest-list--failures-only)
-                                   (eq (plist-get r :status) 'failed))))
+                                   (eq (attest-result-status r) 'failed))))
                         (attest-run-results run)))))
 
 (defun attest-list--result-at-point ()
@@ -88,7 +88,7 @@ empties the list rather than leaving the last run on screen."
          (location (plist-get result :location))
          (line (or (car location) (plist-get result :line) 1))
          (column (cdr location)))
-    (pop-to-buffer (find-file-noselect (plist-get result :file)))
+    (pop-to-buffer (find-file-noselect (attest-result-file result)))
     (goto-char (point-min))
     (forward-line (1- line))
     (when column
@@ -100,8 +100,8 @@ empties the list rather than leaving the last run on screen."
   (interactive)
   (let ((result (attest-list--result-at-point)))
     (message "%s" (or (plist-get result :message)
-                      (format "%s: %s" (plist-get result :name)
-                              (plist-get result :status))))))
+                      (format "%s: %s" (attest-result-name result)
+                              (attest-result-status result))))))
 
 (defun attest-list-toggle-failures ()
   "Toggle between listing every result and failed results only."

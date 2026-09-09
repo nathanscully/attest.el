@@ -16,7 +16,7 @@ you run a test in it. Install the grammars before first use; see
 ## Use
 
 ```elisp
-(add-to-list 'load-path "~/projects/attest")
+(add-to-list 'load-path "~/projects/attest/lisp")
 (require 'attest-all)
 (global-attest-flymake-mode 1)
 (global-attest-status-mode 1)
@@ -64,7 +64,9 @@ vitest when available and skip otherwise; `pnpm install` in
 `test/fixtures/vitest` provides vitest.
 
 See `DESIGN.md` for the backend contract and `ASSESSMENT.md` for what
-works and what does not.
+works and what does not. `docs/CONTEXT.md` defines the domain vocabulary;
+`docs/reviews/` keeps the reviews and the 1.0 roadmap that produced the
+current design.
 
 ## License
 

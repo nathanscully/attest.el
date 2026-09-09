@@ -30,7 +30,7 @@ export default async function* attestReporter(source) {
     } else if (
       (type === "test:pass" || type === "test:fail") &&
       data.file &&
-      !data.file.endsWith(data.name)
+      data.file !== data.name
     ) {
       yield `${JSON.stringify({
         type: "attest:test",

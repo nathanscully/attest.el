@@ -17,12 +17,30 @@ A backend is a plist registered with `attest-register-backend`.
 | `:query` | `(LANG . QUERY)` or `(file) -> (LANG . QUERY)` | tree-sitter discovery query |
 | `:command` | `(run) -> spec` | argv, directory, env, which stream carries results |
 | `:parse-line` | `(run line) -> result(s)` | one line of the result stream to result plists |
+| `:plan` | optional `(run continuation) -> nil` | asynchronous preparation; call CONTINUATION with one spec or `(:invocations SPECS)` |
+| `:test-failure-exit-codes` | optional list of integers | non-zero runner exits that represent test failures |
 
 `:command` returns `(:command ARGV :directory DIR :env ("K=V") :parse-stream stdout|stderr)`.
 `:parse-line` may keep state in `(plist-get run :state)` and may call
 `attest-append-output` to surface human-readable text embedded in
 structured events. Core always splits stdout and stderr; the parse
 stream feeds `:parse-line`, the other goes to the output buffer.
+`:plan` is used when a backend must do asynchronous preparation (Cargo uses
+it for metadata). It owns preparation resources and must call its
+continuation exactly once unless the run is cancelled; the continuation
+receives the same invocation spec shape as `:command`.
+Core suppresses callbacks after cancellation, rejects a second plan launch,
+and applies `attest-preparation-timeout` to preparation that is waiting on
+the event loop. A timeout is a run error; backend planners should use
+`attest-prepare-command` so their process and stderr pipe are cancellable.
+
+Registration validates the backend name, plist shape, required callables and
+the types of optional properties. `attest-validate-backend` and
+`attest-validate-backends` expose the same checks for package and extension
+tests. Backend-specific properties may be added, but core-owned properties
+must keep these meanings. Invocation specs are validated before a process is
+created: commands are non-empty argv lists, environments are string lists,
+and the parse stream is `stdout` or `stderr`.
 
 | backend | runner output | shipped helper | discovery |
 |---|---|---|---|
@@ -43,8 +61,15 @@ Position (from discovery):
 
 Result (from the runner):
 
-    (:id "FILE::ns::name" :type test|namespace :name :status
+    (:id "CASE-ID" :definition-id "DEFINITION-ID"
+     :type test|namespace :name :status
      :file :line :column :duration :message :stack :location (LINE . COL))
+
+`:id` is the runtime-case identity. `:definition-id` points to the static
+source definition when the runner provides a parameterized or execution-
+target case; ordinary results use the same value for both. Consumers should
+use `attest-result-case-id` and `attest-result-definition-id` rather than
+splitting the plist fields themselves.
 
 `:status` is `passed`, `failed`, `skipped` or `todo`. `:line` is the
 test definition. `:location` is the failing frame inside the test file,
@@ -52,9 +77,17 @@ when the runner gives one.
 
 Run:
 
-    (:backend :scope :file :root :targets :files :index
+    (:request ATTEST-REQUEST :backend :scope :file :root :targets :files :index
      :command :directory :process :status :result-ids :results :state
      :start-time :end-time :output-buffer)
+
+`attest-request` captures the backend, scope, origin and resolved selection
+before execution mutates the run. `attest-invocation` owns one process,
+parser state, execution-target identity and terminal exit information.
+Selection lists and target plists in the request are copied at the boundary,
+so later run bookkeeping cannot rewrite the request a rerun or extension sees.
+`attest-run-request` and the generated struct accessors are the stable read
+boundary for extensions; the surrounding run plist remains internal state.
 
 A run reports it has started before it builds its command or parses
 anything, because both block: discovery reads every file in scope on the
@@ -80,6 +113,23 @@ consumers redraw. `:index` maps a file's true name to
 `(POSITIONS . BY-ID)`: the list in discovery order, which linking needs,
 and an id-keyed table so a lookup does not scan.
 
+`attest-run-summary` reduces a run into test counts, invocation counts,
+all invocation exit codes, errors and an explicit outcome. The legacy
+`:exit-code` remains the most recent invocation's code; use
+`attest-run-exit-codes` when a plan ran more than one process.
+`attest-run-complete-p` means preparation, execution
+and result interpretation were trustworthy. Outcomes are `passed`,
+`failed`, `empty`, `incomplete`, `error` or `cancelled`; lifecycle `:status`
+continues to report `pending`, `running`, `finished`, `killed` or `error`.
+An empty run is complete but never reported as passed.
+
+Discovery positions are cached by canonical file, backend registration
+revision, query and file modification stamp. The shared cache is bounded by
+`attest-max-position-cache-entries` with least-recently-used eviction;
+per-run indexes retain their own snapshot and are unaffected by eviction.
+`attest-invalidate-positions` is available when a file changes without a
+reliable mtime or size change.
+
 `:scope` is `file`, `project` or `targets`. A `targets` run carries
 `:targets`, a list of position plists (`:id`, `:type`, `:file`);
 run-at-point passes one, rerun-failed passes the failed results, which
@@ -99,6 +149,18 @@ over-selected test never reaches the cache; it still runs.
 independently; `attest-treesit-ids-match-runner-ids` fails if they
 diverge. Node's `--test-name-pattern` matches the space-joined ancestry,
 so a test id maps to `^a b c$` and a namespace to `^a b( |$)`.
+
+The file component is a true name and every component percent-encodes
+`%` and `:`, so a test literally named `a::b` cannot collide with a test
+`b` nested in `a`.
+
+An id must not depend on the scope that produced it, or one test lands
+in the cache twice. libtest names are unique only within an executable,
+so cargo prefixes a `@cargo/PACKAGE/KIND/NAME` component when a name
+resolves in more than one of the crate's targets. That decision is taken
+once per plan over every target the crate has, never over the files a
+particular run happens to cover: a project run and a rerun of one of its
+failures must agree.
 
 ### Nesting
 

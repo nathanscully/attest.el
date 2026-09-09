@@ -92,6 +92,31 @@ The run is killed and the result cache cleared afterwards."
     (should (gethash "stub::one" attest--results))
     (should (gethash "stub::two" attest--results))))
 
+(ert-deftest attest-multi-invocation-accounting-is-preserved ()
+  "A plan exposes each invocation and exit code in execution order."
+  (let* ((base (attest-backend-props 'process-test))
+         (specs (list (list :command '("sh" "-c" "printf 'T one\\n'"))
+                      (list :command '("sh" "-c" "printf 'T two\\n'"))))
+         (props (copy-sequence base)))
+    (plist-put props :plan
+               (lambda (_run continuation)
+                 (funcall continuation (list :invocations specs))))
+    (attest-process-test--with-run run nil
+      (let ((attest-preparation-timeout nil))
+        (cl-letf (((symbol-function 'attest-backend-props)
+                   (lambda (_backend) props)))
+          (attest--start run)
+          (attest-process-test--wait run)
+          (should (eq 'finished (plist-get run :status)))
+          (should (= 2 (length (attest-run-invocations run))))
+          (should (equal '(0 0) (attest-run-exit-codes run)))
+          (should (equal '(finished finished)
+                         (mapcar #'attest-invocation-status
+                                 (attest-run-invocations run))))
+          (should (= 2 (plist-get (attest-run-summary run) :invocations)))
+          (should (= 0 (plist-get (attest-run-summary run)
+                                  :pending-invocations))))))))
+
 (ert-deftest attest-summary-counts-tests-not-namespaces ()
   "The finish summary ignores namespace results."
   (attest-process-test--with-run run

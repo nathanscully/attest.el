@@ -23,6 +23,12 @@
     (attest-rust--command run)
     run))
 
+(defun attest-rust-test--name-index (&rest names)
+  "Return an index mapping each of NAMES to a placeholder position."
+  (let ((table (make-hash-table :test 'equal)))
+    (dolist (name names) (puthash name (list :type 'test :name name) table))
+    table))
+
 (ert-deftest attest-rust-module-prefix ()
   (let ((root "/crate/"))
     (should (equal (attest-rust-module-prefix "/crate/src/lib.rs" root) ""))
@@ -185,9 +191,38 @@
       (attest-run 'file))
     (with-timeout (120 (ert-fail "cargo did not finish"))
       (while (not finished) (accept-process-output nil 0.1)))
-    (should (equal (mapcar (lambda (r) (plist-get r :id)) results)
+    (should (equal (mapcar (lambda (r) (plist-get r :definition-id)) results)
                    (list (attest-make-id attest-rust-test--scanner "tests" "counts_words"))))
     (should-not (member "scanner" (plist-get (attest-last-run) :command)))))
+
+(ert-deftest attest-rust-ambiguous-names-span-the-whole-crate ()
+  "A name in two targets is ambiguous however few files a run covers.
+Deriving this from the run\='s own positions gave one test two ids, one
+per scope, and left the cache holding both."
+  (let* ((lib (list "pkg/lib/pkg" "/c/Cargo.toml" "lib" "pkg"
+                    (attest-rust-test--name-index "same" "only_lib")
+                    (list "/c/src/lib.rs") "/c/src/lib.rs"))
+         (it (list "pkg/test/it" "/c/Cargo.toml" "test" "it"
+                   (attest-rust-test--name-index "same")
+                   (list "/c/tests/it.rs") "/c/tests/it.rs"))
+         (whole (attest-rust--ambiguous-names (list lib it)))
+         (one-target (attest-rust--ambiguous-names (list lib))))
+    (should (gethash "same" whole))
+    (should-not (gethash "only_lib" whole))
+    (should-not (gethash "same" one-target))
+    (should (zerop (hash-table-count (attest-rust--ambiguous-names nil))))))
+
+(ert-deftest attest-rust-plan-shares-one-ambiguity-set ()
+  "Every invocation the plan builds judges ambiguity identically."
+  (let* ((lib (list "pkg/lib/pkg" "/c/Cargo.toml" "lib" "pkg"
+                    (attest-rust-test--name-index "same")
+                    (list "/c/src/lib.rs") "/c/src/lib.rs"))
+         (it (list "pkg/test/it" "/c/Cargo.toml" "test" "it"
+                   (attest-rust-test--name-index "same")
+                   (list "/c/tests/it.rs") "/c/tests/it.rs"))
+         (ambiguous (attest-rust--ambiguous-names (list lib it))))
+    (should (gethash "same" ambiguous))
+    (should (= (hash-table-count ambiguous) 1))))
 
 (provide 'attest-rust-test)
 ;;; attest-rust-test.el ends here

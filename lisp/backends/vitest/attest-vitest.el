@@ -38,7 +38,7 @@
 ;;; Code:
 
 (require 'attest)
-(require 'attest-node)
+(require 'attest-javascript)
 
 (defgroup attest-vitest nil
   "Vitest backend for attest."
@@ -149,14 +149,26 @@ test below it."
   (let ((buffer (find-buffer-visiting file)))
     (cond
      (buffer (with-current-buffer buffer
-               (save-excursion
-                 (goto-char (point-min))
-                 (re-search-forward attest-vitest--only-regexp nil t))))
+               (attest-vitest--only-buffer-p file)))
      ((file-readable-p file)
       (with-temp-buffer
         (insert-file-contents file)
-        (goto-char (point-min))
-        (re-search-forward attest-vitest--only-regexp nil t))))))
+        (attest-vitest--only-buffer-p file))))))
+
+(defun attest-vitest--only-buffer-p (file)
+  "Return non-nil for an exclusive declaration in the buffer visiting FILE."
+  (save-restriction
+    (widen)
+    (let ((language (car (attest-node--query file))))
+      (attest--ensure-language language)
+      (treesit-query-capture
+       (treesit-parser-root-node (treesit-parser-create language))
+       '(((call_expression
+          function: (member_expression
+                     object: (identifier) @fn
+                     property: (property_identifier) @mod))
+         (:match "\\`\\(?:test\\|it\\|describe\\|suite\\)\\'" @fn)
+         (:equal @mod "only")))))))
 
 (defun attest-vitest--file-has-only-p (run file)
   "Return non-nil when FILE declares `.only\=', caching the answer in RUN.
@@ -183,11 +195,12 @@ excluded test is indistinguishable from one the author wrote as
 `test.skip\='.  Recording those would overwrite the cached status of
 tests that did not run; leaving them out keeps the last real status."
   (when-let* ((result (attest-node-parse-scoped-line run line)))
-    (unless (and (memq (plist-get result :status) '(skipped todo))
-                 (attest-vitest--file-has-only-p run (plist-get result :file)))
+    (unless (and (memq (attest-result-status result) '(skipped todo))
+                 (attest-vitest--file-has-only-p run (attest-result-file result)))
       result)))
 
 (attest-register-backend 'vitest
+  :test-failure-exit-codes '(1)
   :predicate #'attest-vitest--buffer-p
   :project-p #'attest-vitest--project-p
   :test-file-p #'attest-vitest-test-file-p

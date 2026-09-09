@@ -41,7 +41,10 @@ Returns the finished run plist."
 
 (defun attest-stress--test-ids (results)
   "Return the ids of the test results in RESULTS."
-  (mapcar (lambda (r) (plist-get r :id))
+  (mapcar (lambda (r)
+            (replace-regexp-in-string
+             "\\[.*\\]\\'" ""
+             (or (plist-get r :definition-id) (plist-get r :id))))
           (seq-filter (lambda (r) (eq (plist-get r :type) 'test)) results)))
 
 (defun attest-stress--discovered-ids (run)
