@@ -13,11 +13,11 @@
 (ert-deftest attest-result-accessors-separate-case-and-definition ()
   "Parameterized results expose runtime and source identities separately."
   (let ((result '(:id "case-id"
-                  :definition-id "definition-id"
-                  :status failed
-                  :type test
-                  :name "case [1]"
-                  :file "/tmp/test.py")))
+                      :definition-id "definition-id"
+                      :status failed
+                      :type test
+                      :name "case [1]"
+                      :file "/tmp/test.py")))
     (should (equal "case-id" (attest-result-case-id result)))
     (should (equal "definition-id" (attest-result-definition-id result)))
     (should (eq 'failed (attest-result-status result)))

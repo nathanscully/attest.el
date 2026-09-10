@@ -71,7 +71,7 @@
   (should (equal (attest-vitest--name-pattern (list (list :id "/f::math::adds" :type 'test))) "^math adds$"))
   (should (equal (attest-vitest--name-pattern (list (list :id "/f::math::nested" :type 'namespace))) "^math nested( |$)"))
   (should (equal (attest-vitest--name-pattern (list (list :id "/f::math::adds" :type 'test)
-                                                     (list :id "/f::throws" :type 'test)))
+                                                    (list :id "/f::throws" :type 'test)))
                  "^(?:math adds$|throws$)")))
 
 (ert-deftest attest-vitest-command-uses-local-binary ()

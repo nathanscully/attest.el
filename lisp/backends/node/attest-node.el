@@ -95,14 +95,14 @@ A test matches exactly; a namespace also matches every test below it."
           :parse-stream 'stderr)))
 
 (attest-register-backend 'node
-  :test-failure-exit-codes '(1)
-  :predicate #'attest-node--buffer-p
-  :project-p #'attest-node--project-p
-  :test-file-p #'attest-node-test-file-p
-  :root #'attest-node-root
-  :query #'attest-node--query
-  :command #'attest-node--command
-  :parse-line #'attest-node-parse-scoped-line)
+                         :test-failure-exit-codes '(1)
+                         :predicate #'attest-node--buffer-p
+                         :project-p #'attest-node--project-p
+                         :test-file-p #'attest-node-test-file-p
+                         :root #'attest-node-root
+                         :query #'attest-node--query
+                         :command #'attest-node--command
+                         :parse-line #'attest-node-parse-scoped-line)
 
 (provide 'attest-node)
 ;;; attest-node.el ends here

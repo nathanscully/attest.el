@@ -15,7 +15,10 @@ export default class AttestReporter {
         state: result.state,
         mode: testCase.task.mode,
         duration: testCase.diagnostic()?.duration,
-        errors: (result.errors ?? []).map((e) => ({ message: e.message, stack: e.stack })),
+        errors: (result.errors ?? []).map((e) => ({
+          message: e.message,
+          stack: e.stack,
+        })),
       })}\n`,
     );
   }

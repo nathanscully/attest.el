@@ -164,11 +164,11 @@ test below it."
       (treesit-query-capture
        (treesit-parser-root-node (treesit-parser-create language))
        '(((call_expression
-          function: (member_expression
-                     object: (identifier) @fn
-                     property: (property_identifier) @mod))
-         (:match "\\`\\(?:test\\|it\\|describe\\|suite\\)\\'" @fn)
-         (:equal @mod "only")))))))
+           function: (member_expression
+                      object: (identifier) @fn
+                      property: (property_identifier) @mod))
+          (:match "\\`\\(?:test\\|it\\|describe\\|suite\\)\\'" @fn)
+          (:equal @mod "only")))))))
 
 (defun attest-vitest--file-has-only-p (run file)
   "Return non-nil when FILE declares `.only\=', caching the answer in RUN.
@@ -200,14 +200,14 @@ tests that did not run; leaving them out keeps the last real status."
       result)))
 
 (attest-register-backend 'vitest
-  :test-failure-exit-codes '(1)
-  :predicate #'attest-vitest--buffer-p
-  :project-p #'attest-vitest--project-p
-  :test-file-p #'attest-vitest-test-file-p
-  :root #'attest-vitest-root
-  :query #'attest-node--query
-  :command #'attest-vitest--command
-  :parse-line #'attest-vitest-parse-line)
+                         :test-failure-exit-codes '(1)
+                         :predicate #'attest-vitest--buffer-p
+                         :project-p #'attest-vitest--project-p
+                         :test-file-p #'attest-vitest-test-file-p
+                         :root #'attest-vitest-root
+                         :query #'attest-node--query
+                         :command #'attest-vitest--command
+                         :parse-line #'attest-vitest-parse-line)
 
 (provide 'attest-vitest)
 ;;; attest-vitest.el ends here

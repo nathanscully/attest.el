@@ -117,7 +117,7 @@ node_modules."
 
 (defconst attest-node--modes
   '(typescript-ts-mode tsx-ts-mode js-ts-mode js-mode typescript-mode
-    js2-mode rjsx-mode web-mode)
+                       js2-mode rjsx-mode web-mode)
   "Major modes a node or vitest test file may be visited in.")
 
 (defun attest-node--buffer-p ()

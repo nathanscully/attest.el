@@ -49,55 +49,55 @@
   "Invalid commands must finish once and release their progress timer."
   (let ((finished 0))
     (attest-process-test--with-run run nil
-      (let ((attest-run-finished-functions
-             (list (lambda (_) (cl-incf finished)))))
-        (should-error (attest--start run))
-        (should (eq (plist-get run :status) 'error))
-        (should (plist-get run :end-time))
-        (should-not attest--progress-timer)
-        (should (= finished 1))))))
+                                   (let ((attest-run-finished-functions
+                                          (list (lambda (_) (cl-incf finished)))))
+                                     (should-error (attest--start run))
+                                     (should (eq (plist-get run :status) 'error))
+                                     (should (plist-get run :end-time))
+                                     (should-not attest--progress-timer)
+                                     (should (= finished 1))))))
 
 (ert-deftest attest-preparation-callback-after-kill-is-ignored ()
   "A late preparation callback cannot launch a cancelled run."
   (let (continuation)
     (attest-process-test--with-run run nil
-      (cl-letf (((symbol-function 'attest-backend-props)
-                 (lambda (_backend)
-                   (list :plan (lambda (_run callback)
-                                 (setq continuation callback))))))
-        (attest--start run)
-        (should (functionp continuation))
-        (attest-kill)
-        (funcall continuation '(:command ("true")))
-        (should (eq 'killed (plist-get run :status)))
-        (should-not (plist-get run :plan-launched))))))
+                                   (cl-letf (((symbol-function 'attest-backend-props)
+                                              (lambda (_backend)
+                                                (list :plan (lambda (_run callback)
+                                                              (setq continuation callback))))))
+                                            (attest--start run)
+                                            (should (functionp continuation))
+                                            (attest-kill)
+                                            (funcall continuation '(:command ("true")))
+                                            (should (eq 'killed (plist-get run :status)))
+                                            (should-not (plist-get run :plan-launched))))))
 
 (ert-deftest attest-preparation-timeout-finishes-and-cleans-up ()
   "A preparation process that exceeds its deadline becomes a run error."
   (let ((attest-preparation-timeout 0.05))
     (attest-process-test--with-run run nil
-      (cl-letf (((symbol-function 'attest-backend-props)
-                 (lambda (_backend)
-                   (list :plan
-                         (lambda (current callback)
-                           (attest-prepare-command
-                            current '("sh" "-c" "sleep 5") callback))))))
-        (attest--start run)
-        (attest-process-test--wait run 1)
-        (should (eq 'error (plist-get run :status)))
-        (should (seq-some (lambda (message)
-                            (string-match-p "Preparation timed out" message))
-                          (plist-get run :errors)))
-        (should-not (process-live-p (plist-get run :process)))
-        (should-not (process-live-p (plist-get run :stderr-process)))))))
+                                   (cl-letf (((symbol-function 'attest-backend-props)
+                                              (lambda (_backend)
+                                                (list :plan
+                                                      (lambda (current callback)
+                                                        (attest-prepare-command
+                                                         current '("sh" "-c" "sleep 5") callback))))))
+                                            (attest--start run)
+                                            (attest-process-test--wait run 1)
+                                            (should (eq 'error (plist-get run :status)))
+                                            (should (seq-some (lambda (message)
+                                                                (string-match-p "Preparation timed out" message))
+                                                              (plist-get run :errors)))
+                                            (should-not (process-live-p (plist-get run :process)))
+                                            (should-not (process-live-p (plist-get run :stderr-process)))))))
 
 (ert-deftest attest-spawn-error-closes-every-process ()
   "A failed executable must not leak its already allocated stderr pipe."
   (let ((before (process-list)))
     (attest-process-test--with-run run
-        '(:command ("attest-no-such-executable-exists"))
-      (should-error (attest--start run))
-      (should-not (seq-difference (process-list) before)))))
+                                   '(:command ("attest-no-such-executable-exists"))
+                                   (should-error (attest--start run))
+                                   (should-not (seq-difference (process-list) before)))))
 
 (ert-deftest attest-consumer-error-preserves-result-batch ()
   "One subscriber cannot discard later records or suppress other subscribers."
@@ -120,8 +120,8 @@
                     :file "/tmp/x.js" :root "/tmp/"
                     :vitest-only (make-hash-table) :future-cache '(stale)))
          (copy (cl-letf (((symbol-function 'attest-kill) #'ignore)
-                        ((symbol-function 'attest--start) #'identity))
-                 (attest--restart old))))
+                         ((symbol-function 'attest--start) #'identity))
+                        (attest--restart old))))
     (should (equal (plist-get copy :file) (plist-get old :file)))
     (should-not (plist-get copy :vitest-only))
     (should-not (plist-get copy :future-cache))))
@@ -168,29 +168,29 @@
     (should (equal file (attest-id-file id)))
     (should-not (equal (attest-make-id file "a::b") (attest-make-id file "a" "b")))
     (should (equal id (apply #'attest-make-id
-                            (concat (file-name-directory file) "./demo.test.ts") names)))))
+                             (concat (file-name-directory file) "./demo.test.ts") names)))))
 
 (ert-deftest attest-nonzero-exit-after-passing-result-is-error ()
   "A partial passing result must not mask a runner failure."
   (attest-process-test--with-run run
-      '(:command ("sh" "-c" "printf 'T one\\n'; exit 2"))
-    (attest--start run)
-    (attest-process-test--wait run)
-    (should (eq (plist-get run :status) 'error))
-    (should (= (plist-get run :exit-code) 2))
-    (should (= 1 (length (attest-run-results run))))))
+                                 '(:command ("sh" "-c" "printf 'T one\\n'; exit 2"))
+                                 (attest--start run)
+                                 (attest-process-test--wait run)
+                                 (should (eq (plist-get run :status) 'error))
+                                 (should (= (plist-get run :exit-code) 2))
+                                 (should (= 1 (length (attest-run-results run))))))
 
 (ert-deftest attest-framing-bounds-and-recovers ()
   "An oversized event is bounded and later valid events still arrive."
   (attest-process-test--with-run run '(:command ("true"))
-    (let ((attest-max-event-size 32))
-      (dotimes (_ 100) (attest--feed-lines run :partial-stdout (make-string 8 ?x)))
-      (let ((frame (plist-get run :partial-stdout)))
-        (should (attest-frame-discarding frame))
-        (should-not (attest-frame-chunks frame)))
-      (attest--feed-lines run :partial-stdout "\nT recovered\n")
-      (should (plist-get run :errors))
-      (should (attest-run-result run "stub::recovered")))))
+                                 (let ((attest-max-event-size 32))
+                                   (dotimes (_ 100) (attest--feed-lines run :partial-stdout (make-string 8 ?x)))
+                                   (let ((frame (plist-get run :partial-stdout)))
+                                     (should (attest-frame-discarding frame))
+                                     (should-not (attest-frame-chunks frame)))
+                                   (attest--feed-lines run :partial-stdout "\nT recovered\n")
+                                   (should (plist-get run :errors))
+                                   (should (attest-run-result run "stub::recovered")))))
 
 (ert-deftest attest-cargo-collisions-preserve-failure ()
   "Identical libtest names in different executables must stay independent."

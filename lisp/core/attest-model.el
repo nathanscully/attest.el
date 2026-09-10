@@ -39,18 +39,18 @@
   :prefix "attest-")
 
 (cl-defstruct (attest-request (:constructor attest-request-create))
-  "The selection and origin of a run, independent of mutable execution state."
-  backend scope file root buffer targets files)
+              "The selection and origin of a run, independent of mutable execution state."
+              backend scope file root buffer targets files)
 
 (cl-defstruct (attest-invocation (:constructor attest-invocation-create))
-  "One owned runner process and its terminal outcome.
+              "One owned runner process and its terminal outcome.
 STATE is parser state for this invocation and EXECUTION-TARGET identifies
 the runner context when a backend has more than one target."
-  spec process stderr exit-code status state execution-target)
+              spec process stderr exit-code status state execution-target)
 
 (cl-defstruct (attest-frame (:constructor attest-frame-create))
-  "Bounded incremental framing state for one runner stream."
-  chunks (bytes 0) discarding)
+              "Bounded incremental framing state for one runner stream."
+              chunks (bytes 0) discarding)
 
 (defcustom attest-backend nil
   "Explicit backend for the current project, or nil for automatic detection."

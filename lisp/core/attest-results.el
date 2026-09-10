@@ -198,7 +198,7 @@ Counts include test results only; namespace results remain available from
           :outcome (attest--run-outcome run all-results)
           :complete-p (attest-run-complete-p run)
           :tests (length results)
-         :results (length all-results)
+          :results (length all-results)
           :invocations (length (attest-run-invocations run))
           :pending-invocations (length (plist-get run :pending-invocations))
           :exit-codes (attest-run-exit-codes run)

@@ -29,71 +29,71 @@
 (ert-deftest attest-results-for-file-returns-only-that-file ()
   "The index does not leak results recorded for other files."
   (attest-cache-test--with-cache
-    (attest-cache-test--put "a::one" "/tmp/a.js")
-    (attest-cache-test--put "a::two" "/tmp/a.js")
-    (attest-cache-test--put "b::one" "/tmp/b.js")
-    (should (equal (sort (mapcar (lambda (r) (plist-get r :id))
-                                 (attest-results-for-file "/tmp/a.js"))
-                         #'string<)
-                   '("a::one" "a::two")))
-    (should (equal (mapcar (lambda (r) (plist-get r :id))
-                           (attest-results-for-file "/tmp/b.js"))
-                   '("b::one")))))
+   (attest-cache-test--put "a::one" "/tmp/a.js")
+   (attest-cache-test--put "a::two" "/tmp/a.js")
+   (attest-cache-test--put "b::one" "/tmp/b.js")
+   (should (equal (sort (mapcar (lambda (r) (plist-get r :id))
+                                (attest-results-for-file "/tmp/a.js"))
+                        #'string<)
+                  '("a::one" "a::two")))
+   (should (equal (mapcar (lambda (r) (plist-get r :id))
+                          (attest-results-for-file "/tmp/b.js"))
+                  '("b::one")))))
 
 (ert-deftest attest-results-for-file-matches-a-full-scan ()
   "The index agrees with walking every result in the cache."
   (attest-cache-test--with-cache
-    (dotimes (f 5)
-      (dotimes (n 4)
-        (attest-cache-test--put (format "f%d::t%d" f n) (format "/tmp/f%d.js" f))))
-    (dotimes (f 5)
-      (let* ((file (format "/tmp/f%d.js" f))
-             (scanned nil))
-        (maphash (lambda (_id result)
-                   (when (equal (plist-get result :file) file)
-                     (push (plist-get result :id) scanned)))
-                 attest--results)
-        (should (equal (sort scanned #'string<)
-                       (sort (mapcar (lambda (r) (plist-get r :id))
-                                     (attest-results-for-file file))
-                             #'string<)))))))
+   (dotimes (f 5)
+     (dotimes (n 4)
+       (attest-cache-test--put (format "f%d::t%d" f n) (format "/tmp/f%d.js" f))))
+   (dotimes (f 5)
+     (let* ((file (format "/tmp/f%d.js" f))
+            (scanned nil))
+       (maphash (lambda (_id result)
+                  (when (equal (plist-get result :file) file)
+                    (push (plist-get result :id) scanned)))
+                attest--results)
+       (should (equal (sort scanned #'string<)
+                      (sort (mapcar (lambda (r) (plist-get r :id))
+                                    (attest-results-for-file file))
+                            #'string<)))))))
 
 (ert-deftest attest-results-for-file-ignores-path-spelling ()
   "A file named through a symlink resolves to the same entry."
   (attest-cache-test--with-cache
-    (let* ((dir (make-temp-file "attest-cache" t))
-           (real (expand-file-name "real.js" dir))
-           (link (expand-file-name "link.js" dir)))
-      (unwind-protect
-          (progn
-            (write-region "" nil real nil 'silent)
-            (make-symbolic-link real link t)
-            (attest-cache-test--put "x::one" real)
-            (should (= 1 (length (attest-results-for-file link)))))
-        (delete-directory dir t)))))
+   (let* ((dir (make-temp-file "attest-cache" t))
+          (real (expand-file-name "real.js" dir))
+          (link (expand-file-name "link.js" dir)))
+     (unwind-protect
+         (progn
+           (write-region "" nil real nil 'silent)
+           (make-symbolic-link real link t)
+           (attest-cache-test--put "x::one" real)
+           (should (= 1 (length (attest-results-for-file link)))))
+       (delete-directory dir t)))))
 
 (ert-deftest attest-recording-a-moved-test-leaves-no-ghost ()
   "A test that changes file is indexed under the new file only."
   (attest-cache-test--with-cache
-    (let ((run (list :backend nil :result-ids nil :results nil)))
-      (attest--record run (list :id "m::one" :type 'test :name "one"
-                                :status 'passed :file "/tmp/old.js"))
-      (attest--record run (list :id "m::one" :type 'test :name "one"
-                                :status 'failed :file "/tmp/new.js"))
-      (should-not (attest-results-for-file "/tmp/old.js"))
-      (should (= 1 (length (attest-results-for-file "/tmp/new.js")))))))
+   (let ((run (list :backend nil :result-ids nil :results nil)))
+     (attest--record run (list :id "m::one" :type 'test :name "one"
+                               :status 'passed :file "/tmp/old.js"))
+     (attest--record run (list :id "m::one" :type 'test :name "one"
+                               :status 'failed :file "/tmp/new.js"))
+     (should-not (attest-results-for-file "/tmp/old.js"))
+     (should (= 1 (length (attest-results-for-file "/tmp/new.js")))))))
 
 (ert-deftest attest-clear-results-empties-the-index ()
   "Clearing drops the ids and the per-file index together."
   (attest-cache-test--with-cache
-    (attest-cache-test--put "a::one" "/tmp/a.js")
-    (attest-cache-test--put "b::one" "/tmp/b.js")
-    (attest-clear-results "/tmp/a.js")
-    (should-not (attest-results-for-file "/tmp/a.js"))
-    (should (attest-results-for-file "/tmp/b.js"))
-    (attest-clear-results)
-    (should (zerop (hash-table-count attest--results)))
-    (should (zerop (hash-table-count attest--results-by-file)))))
+   (attest-cache-test--put "a::one" "/tmp/a.js")
+   (attest-cache-test--put "b::one" "/tmp/b.js")
+   (attest-clear-results "/tmp/a.js")
+   (should-not (attest-results-for-file "/tmp/a.js"))
+   (should (attest-results-for-file "/tmp/b.js"))
+   (attest-clear-results)
+   (should (zerop (hash-table-count attest--results)))
+   (should (zerop (hash-table-count attest--results-by-file)))))
 
 (ert-deftest attest-project-scope-resolves-from-a-source-file ()
   "A project run starts from any file in the project, not only a test."
@@ -124,7 +124,7 @@
       (should (memq backend names)))
     (should (< (seq-position names 'vitest) (seq-position names 'node))))
   (dolist (feature '(attest attest-node attest-vitest attest-rust attest-pytest
-                           attest-flymake attest-status attest-list))
+                            attest-flymake attest-status attest-list))
     (should (featurep feature))))
 
 (ert-deftest attest-discovery-skips-oversized-files ()
@@ -170,15 +170,15 @@
                        (lambda (&rest args)
                          (setq parses (1+ parses))
                          (apply orig args))))
-              (attest-file-positions file 'node)
-              (attest-file-positions file 'node)
-              (attest-file-positions file 'node)
-              (should (= parses 1))
-              (write-region "test('one', () => {});\ntest('two', () => {});\n"
-                            nil file nil 'silent)
-              (set-file-times file (time-add (current-time) 5))
-              (should (= (length (attest-file-positions file 'node)) 2))
-              (should (= parses 2)))))
+                     (attest-file-positions file 'node)
+                     (attest-file-positions file 'node)
+                     (attest-file-positions file 'node)
+                     (should (= parses 1))
+                     (write-region "test('one', () => {});\ntest('two', () => {});\n"
+                                   nil file nil 'silent)
+                     (set-file-times file (time-add (current-time) 5))
+                     (should (= (length (attest-file-positions file 'node)) 2))
+                     (should (= parses 2)))))
       (attest-invalidate-positions)
       (delete-file file))))
 

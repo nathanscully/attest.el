@@ -16,7 +16,7 @@
 (dolist (backend '(node vitest rust pytest))
   (unless (assq backend attest--backends) (error "Missing backend %s" backend)))
 (dolist (file (list attest-node--reporter attest-vitest--reporter
-                   (expand-file-name "attest_pytest.py" attest-pytest--plugin-dir)))
+                    (expand-file-name "attest_pytest.py" attest-pytest--plugin-dir)))
   (unless (and (file-readable-p file) (file-in-directory-p file package-user-dir))
     (error "Missing installed asset %s" file)))
 (message "Installed package smoke test passed")

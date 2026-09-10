@@ -84,9 +84,9 @@
 (ert-deftest attest-contract-validates-invocation-specs ()
   "Invocation plans reject malformed process specifications early."
   (let ((spec '(:command ("node" "--test")
-                :directory "/tmp"
-                :env ("NODE_ENV=test")
-                :parse-stream stderr)))
+                         :directory "/tmp"
+                         :env ("NODE_ENV=test")
+                         :parse-stream stderr)))
     (should (eq spec (attest-validate-invocation-spec spec)))
     (should (equal (list spec)
                    (attest-validate-invocation-plan spec)))

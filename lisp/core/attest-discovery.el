@@ -161,11 +161,11 @@ FILE names the buffer's file in the resulting ids."
   (save-restriction
     (widen)
     (let* ((root (treesit-parser-root-node (treesit-parser-create language)))
-         (positions (attest--capture-positions
-                     (treesit-query-capture root query) file)))
-    (attest--link-positions
-     (sort positions (lambda (a b) (< (plist-get a :beg) (plist-get b :beg))))
-     file))))
+           (positions (attest--capture-positions
+                       (treesit-query-capture root query) file)))
+      (attest--link-positions
+       (sort positions (lambda (a b) (< (plist-get a :beg) (plist-get b :beg))))
+       file))))
 
 (defun attest-positions (&optional buffer)
   "Return the test positions discovered in BUFFER.

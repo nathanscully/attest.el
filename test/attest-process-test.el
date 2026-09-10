@@ -15,18 +15,18 @@
   "Command spec the stub backend returns for the next run.")
 
 (attest-register-backend 'process-test
-  :predicate #'ignore
-  :test-file-p #'ignore
-  :root (lambda (_file) temporary-file-directory)
-  :query (lambda (_file) (cons 'javascript '((identifier) @name)))
-  :command (lambda (_run) attest-process-test--command)
-  :parse-line
-  (lambda (_run line)
-    (when (string-prefix-p "T " line)
-      (list :id (concat "stub::" (substring line 2))
-            :type 'test :name (substring line 2)
-            :status 'passed :file "/stub/file.js")))
-  :positions #'ignore)
+                         :predicate #'ignore
+                         :test-file-p #'ignore
+                         :root (lambda (_file) temporary-file-directory)
+                         :query (lambda (_file) (cons 'javascript '((identifier) @name)))
+                         :command (lambda (_run) attest-process-test--command)
+                         :parse-line
+                         (lambda (_run line)
+                           (when (string-prefix-p "T " line)
+                             (list :id (concat "stub::" (substring line 2))
+                                   :type 'test :name (substring line 2)
+                                   :status 'passed :file "/stub/file.js")))
+                         :positions #'ignore)
 
 (defmacro attest-process-test--with-run (var command &rest body)
   "Bind VAR to a started run of COMMAND and evaluate BODY.
@@ -57,40 +57,40 @@ The run is killed and the result cache cleared afterwards."
 (ert-deftest attest-kill-closes-the-stderr-pipe ()
   "Killing a run leaves no live pipe holding a filter over it."
   (attest-process-test--with-run run
-      (list :command (list "sh" "-c" "sleep 5") :parse-stream 'stderr)
-    (attest--start run)
-    (should (process-live-p (plist-get run :stderr-process)))
-    (attest-kill)
-    (should (eq (plist-get run :status) 'killed))
-    (should-not (process-live-p (plist-get run :stderr-process)))))
+                                 (list :command (list "sh" "-c" "sleep 5") :parse-stream 'stderr)
+                                 (attest--start run)
+                                 (should (process-live-p (plist-get run :stderr-process)))
+                                 (attest-kill)
+                                 (should (eq (plist-get run :status) 'killed))
+                                 (should-not (process-live-p (plist-get run :stderr-process)))))
 
 (ert-deftest attest-stopped-runs-record-nothing ()
   "A filter firing after its run stopped adds nothing to the cache."
   (attest-process-test--with-run run
-      (list :command (list "sh" "-c" "sleep 5") :parse-stream 'stderr)
-    (attest--start run)
-    (let ((filter (process-filter (plist-get run :stderr-process))))
-      (attest-kill)
-      (funcall filter (plist-get run :stderr-process) "T ghost\n")
-      (should-not (gethash "stub::ghost" attest--results)))))
+                                 (list :command (list "sh" "-c" "sleep 5") :parse-stream 'stderr)
+                                 (attest--start run)
+                                 (let ((filter (process-filter (plist-get run :stderr-process))))
+                                   (attest-kill)
+                                   (funcall filter (plist-get run :stderr-process) "T ghost\n")
+                                   (should-not (gethash "stub::ghost" attest--results)))))
 
 (ert-deftest attest-failed-spawn-finishes-without-signalling ()
   "A command that cannot start ends the run as an error, not a debugger."
   (attest-process-test--with-run run
-      (list :command (list "attest-no-such-executable-exists")
-            :parse-stream 'stdout)
-    (should-error (attest--start run) :type 'user-error)
-    (should (eq (plist-get run :status) 'error))))
+                                 (list :command (list "attest-no-such-executable-exists")
+                                       :parse-stream 'stdout)
+                                 (should-error (attest--start run) :type 'user-error)
+                                 (should (eq (plist-get run :status) 'error))))
 
 (ert-deftest attest-crlf-output-still-parses ()
   "Lines ending in CRLF reach the backend without their carriage return."
   (attest-process-test--with-run run
-      (list :command (list "sh" "-c" "printf 'T one\\r\\nT two\\r\\n' 1>&2")
-            :parse-stream 'stderr)
-    (attest--start run)
-    (attest-process-test--wait run)
-    (should (gethash "stub::one" attest--results))
-    (should (gethash "stub::two" attest--results))))
+                                 (list :command (list "sh" "-c" "printf 'T one\\r\\nT two\\r\\n' 1>&2")
+                                       :parse-stream 'stderr)
+                                 (attest--start run)
+                                 (attest-process-test--wait run)
+                                 (should (gethash "stub::one" attest--results))
+                                 (should (gethash "stub::two" attest--results))))
 
 (ert-deftest attest-multi-invocation-accounting-is-preserved ()
   "A plan exposes each invocation and exit code in execution order."
@@ -102,37 +102,37 @@ The run is killed and the result cache cleared afterwards."
                (lambda (_run continuation)
                  (funcall continuation (list :invocations specs))))
     (attest-process-test--with-run run nil
-      (let ((attest-preparation-timeout nil))
-        (cl-letf (((symbol-function 'attest-backend-props)
-                   (lambda (_backend) props)))
-          (attest--start run)
-          (attest-process-test--wait run)
-          (should (eq 'finished (plist-get run :status)))
-          (should (= 2 (length (attest-run-invocations run))))
-          (should (equal '(0 0) (attest-run-exit-codes run)))
-          (should (equal '(finished finished)
-                         (mapcar #'attest-invocation-status
-                                 (attest-run-invocations run))))
-          (should (= 2 (plist-get (attest-run-summary run) :invocations)))
-          (should (= 0 (plist-get (attest-run-summary run)
-                                  :pending-invocations))))))))
+                                   (let ((attest-preparation-timeout nil))
+                                     (cl-letf (((symbol-function 'attest-backend-props)
+                                                (lambda (_backend) props)))
+                                              (attest--start run)
+                                              (attest-process-test--wait run)
+                                              (should (eq 'finished (plist-get run :status)))
+                                              (should (= 2 (length (attest-run-invocations run))))
+                                              (should (equal '(0 0) (attest-run-exit-codes run)))
+                                              (should (equal '(finished finished)
+                                                             (mapcar #'attest-invocation-status
+                                                                     (attest-run-invocations run))))
+                                              (should (= 2 (plist-get (attest-run-summary run) :invocations)))
+                                              (should (= 0 (plist-get (attest-run-summary run)
+                                                                      :pending-invocations))))))))
 
 (ert-deftest attest-summary-counts-tests-not-namespaces ()
   "The finish summary ignores namespace results."
   (attest-process-test--with-run run
-      (list :command (list "sh" "-c" "true") :parse-stream 'stdout)
-    (plist-put run :status 'running)
-    (plist-put run :start-time (float-time))
-    (plist-put run :output-buffer nil)
-    (attest--record run (list :id "s::ns" :type 'namespace :name "ns"
-                              :status 'failed :file "/stub/file.js"))
-    (attest--record run (list :id "s::ns::a" :type 'test :name "a"
-                              :status 'passed :file "/stub/file.js"))
-    (let ((summary nil))
-      (cl-letf (((symbol-function 'message)
-                 (lambda (fmt &rest args) (setq summary (apply #'format fmt args)))))
-        (attest--finish run 'finished))
-      (should (string-match-p "1 passed, 0 failed, 0 skipped" summary)))))
+                                 (list :command (list "sh" "-c" "true") :parse-stream 'stdout)
+                                 (plist-put run :status 'running)
+                                 (plist-put run :start-time (float-time))
+                                 (plist-put run :output-buffer nil)
+                                 (attest--record run (list :id "s::ns" :type 'namespace :name "ns"
+                                                           :status 'failed :file "/stub/file.js"))
+                                 (attest--record run (list :id "s::ns::a" :type 'test :name "a"
+                                                           :status 'passed :file "/stub/file.js"))
+                                 (let ((summary nil))
+                                   (cl-letf (((symbol-function 'message)
+                                              (lambda (fmt &rest args) (setq summary (apply #'format fmt args)))))
+                                            (attest--finish run 'finished))
+                                   (should (string-match-p "1 passed, 0 failed, 0 skipped" summary)))))
 
 (ert-deftest attest-start-rejects-a-run-it-cannot-mutate ()
   "A run that plist-put cannot extend in place is refused before it runs.
@@ -146,12 +146,12 @@ than let a later missing key be the thing that fails."
         (spawned nil))
     (cl-letf (((symbol-function 'attest--spawn)
                (lambda (&rest _) (setq spawned t) nil)))
-      (dolist (run (list nil
-                         (list :scope 'file :status 'pending)
-                         (list :backend 'process-test :scope 'file)))
-        (let ((err (should-error (attest--start run))))
-          (should (string-prefix-p "Attest: run " (cadr err)))))
-      (should-not spawned))))
+             (dolist (run (list nil
+                                (list :scope 'file :status 'pending)
+                                (list :backend 'process-test :scope 'file)))
+               (let ((err (should-error (attest--start run))))
+                 (should (string-prefix-p "Attest: run " (cadr err)))))
+             (should-not spawned))))
 
 (ert-deftest attest-output-buffer-stays-bounded ()
   "Output past `attest-max-output' drops the oldest lines, not the newest."
