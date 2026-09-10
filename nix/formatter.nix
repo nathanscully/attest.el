@@ -17,10 +17,6 @@
     "stress/**"
     # Historical records of reviews as they were written.
     "docs/reviews/**"
-    # Prose is hand-wrapped at 72 columns and the tables are written to
-    # read as source. Prettier pads every cell to the widest row, which is
-    # churn rather than formatting.
-    "*.md"
   ];
 
   programs = {
@@ -28,7 +24,16 @@
     prettier.enable = true;
     taplo.enable = true;
     yamlfmt.enable = true;
+    mdformat.enable = true;
   };
+
+  # mdformat owns Markdown, not prettier: it leaves tables and paragraph
+  # wrapping alone, where prettier pads every cell to the widest row.
+  # `--wrap keep` is the default and preserves the hand-wrapped prose;
+  # `--number` keeps ordered lists consecutively numbered in the source,
+  # which the reading-order and findings lists read better for.
+  settings.formatter.mdformat.options = [ "--number" "--wrap" "keep" ];
+  settings.formatter.prettier.excludes = [ "*.md" ];
 
   # No Elisp formatter ships with treefmt, so use the indentation Emacs
   # itself applies. Tabs are never used in this codebase, hence the
