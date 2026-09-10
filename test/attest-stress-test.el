@@ -201,7 +201,7 @@ so discovery must claim those files too."
   (skip-unless (attest-stress-node--available-p))
   (attest-stress--check-dynamic-mismatch
    (attest-stress--run (attest-stress--file "node/src/dynamic.test.ts")
-                        #'typescript-ts-mode 'file)))
+                       #'typescript-ts-mode 'file)))
 
 (ert-deftest attest-stress-node-single-target ()
   (skip-unless (attest-stress-node--available-p))
@@ -246,7 +246,7 @@ so discovery must claim those files too."
   (skip-unless (attest-stress-vitest--available-p))
   (attest-stress--check-dynamic-mismatch
    (attest-stress--run (attest-stress--file "vitest/packages/alpha/src/dynamic.test.ts")
-                        #'typescript-ts-mode 'file)))
+                       #'typescript-ts-mode 'file)))
 
 (ert-deftest attest-stress-vitest-single-target ()
   (skip-unless (attest-stress-vitest--available-p))
@@ -327,7 +327,7 @@ so discovery must claim those files too."
   (skip-unless (attest-stress-pytest--available-p))
   (attest-stress--check-dynamic-mismatch
    (attest-stress--run (attest-stress--file "pytest/tests/test_dynamic.py")
-                        #'python-ts-mode 'file)))
+                       #'python-ts-mode 'file)))
 
 (ert-deftest attest-stress-pytest-single-target ()
   (skip-unless (attest-stress-pytest--available-p))

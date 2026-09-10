@@ -38,11 +38,11 @@
 (ert-deftest attest-progress-buffers-ignore-path-spelling ()
   "A buffer visiting the file under another name still gets the indicator."
   (attest-review2--with-linked-file real link
-    (let ((buffer (find-file-noselect link)))
-      (unwind-protect
-          (let ((run (list :backend 'node :scope 'file :file real)))
-            (should (memq buffer (attest--progress-buffers run))))
-        (kill-buffer buffer)))))
+                                    (let ((buffer (find-file-noselect link)))
+                                      (unwind-protect
+                                          (let ((run (list :backend 'node :scope 'file :file real)))
+                                            (should (memq buffer (attest--progress-buffers run))))
+                                        (kill-buffer buffer)))))
 
 (ert-deftest attest-run-position-ignores-path-spelling ()
   "A result naming the file differently still finds its position.
@@ -51,56 +51,56 @@ so this drives the case it does not: an id built from a path discovery
 never saw."
   (require 'attest-node)
   (attest-review2--with-linked-file real link
-    (let* ((run (list :backend 'node :scope 'file :file real))
-           (elsewhere (attest-make-id
-                       (expand-file-name "real.test.js" "/other/root/")
-                       "one")))
-      (should (attest-run-position run (attest-make-id real "one")))
-      (should (attest-run-position run (attest-make-id link "one")))
-      (should-not (attest-run-position run elsewhere)))))
+                                    (let* ((run (list :backend 'node :scope 'file :file real))
+                                           (elsewhere (attest-make-id
+                                                       (expand-file-name "real.test.js" "/other/root/")
+                                                       "one")))
+                                      (should (attest-run-position run (attest-make-id real "one")))
+                                      (should (attest-run-position run (attest-make-id link "one")))
+                                      (should-not (attest-run-position run elsewhere)))))
 
 (ert-deftest attest-clear-results-tells-the-consumers ()
   "Clearing fires the cache hook with the files it cleared."
   (attest-review2--with-cache
-    (let* ((seen 'unset)
-           (attest-results-changed-functions
-            (list (lambda (files) (setq seen files)))))
-      (attest-cache-result (list :id "a::one" :type 'test :name "one"
-                                 :status 'failed :file "/tmp/a.js"))
-      (attest-clear-results "/tmp/a.js")
-      (should (equal seen (list "/tmp/a.js")))
-      (setq seen 'unset)
-      (attest-clear-results)
-      (should (null seen)))))
+   (let* ((seen 'unset)
+          (attest-results-changed-functions
+           (list (lambda (files) (setq seen files)))))
+     (attest-cache-result (list :id "a::one" :type 'test :name "one"
+                                :status 'failed :file "/tmp/a.js"))
+     (attest-clear-results "/tmp/a.js")
+     (should (equal seen (list "/tmp/a.js")))
+     (setq seen 'unset)
+     (attest-clear-results)
+     (should (null seen)))))
 
 (ert-deftest attest-status-redraws-when-results-are-cleared ()
   "Clearing a file's results removes its fringe markers."
   (attest-review2--with-cache
-    (let* ((file (attest-test-fixture "demo.test.ts"))
-           (buffer (find-file-noselect file)))
-      (unwind-protect
-          (with-current-buffer buffer
-            (attest-status-mode 1)
-            (attest-cache-result (list :id (attest-make-id file "ghost")
-                                       :type 'test :name "ghost"
-                                       :status 'failed :file file :line 1))
-            (attest-status--render-buffer)
-            (should (seq-find (lambda (o) (overlay-get o 'attest-status))
-                              (overlays-in (point-min) (point-max))))
-            (attest-clear-results file)
-            (should-not (seq-find (lambda (o) (overlay-get o 'attest-status))
-                                  (overlays-in (point-min) (point-max)))))
-        (kill-buffer buffer)))))
+   (let* ((file (attest-test-fixture "demo.test.ts"))
+          (buffer (find-file-noselect file)))
+     (unwind-protect
+         (with-current-buffer buffer
+           (attest-status-mode 1)
+           (attest-cache-result (list :id (attest-make-id file "ghost")
+                                      :type 'test :name "ghost"
+                                      :status 'failed :file file :line 1))
+           (attest-status--render-buffer)
+           (should (seq-find (lambda (o) (overlay-get o 'attest-status))
+                             (overlays-in (point-min) (point-max))))
+           (attest-clear-results file)
+           (should-not (seq-find (lambda (o) (overlay-get o 'attest-status))
+                                 (overlays-in (point-min) (point-max)))))
+       (kill-buffer buffer)))))
 
 (ert-deftest attest-cache-result-moves-an-id-between-files ()
   "Re-caching an id under a new file leaves no ghost in the old one."
   (attest-review2--with-cache
-    (attest-cache-result (list :id "m::one" :type 'test :name "one"
-                               :status 'passed :file "/tmp/old.js"))
-    (attest-cache-result (list :id "m::one" :type 'test :name "one"
-                               :status 'failed :file "/tmp/new.js"))
-    (should-not (attest-results-for-file "/tmp/old.js"))
-    (should (= 1 (length (attest-results-for-file "/tmp/new.js"))))))
+   (attest-cache-result (list :id "m::one" :type 'test :name "one"
+                              :status 'passed :file "/tmp/old.js"))
+   (attest-cache-result (list :id "m::one" :type 'test :name "one"
+                              :status 'failed :file "/tmp/new.js"))
+   (should-not (attest-results-for-file "/tmp/old.js"))
+   (should (= 1 (length (attest-results-for-file "/tmp/new.js"))))))
 
 (ert-deftest attest-output-trim-marks-the-cut-once ()
   "Repeated trimming leaves one marker, not a run of them."

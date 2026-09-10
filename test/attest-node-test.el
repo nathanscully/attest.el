@@ -18,11 +18,11 @@
 (defun attest-node-test--parse-fixture (name)
   "Feed fixture NAME through the parser and return the results in order."
   (attest-test-with-run run
-    (let (results)
-      (dolist (line (attest-test-fixture-lines name))
-        (let ((r (attest-node--parse-line run line)))
-          (when r (push r results))))
-      (nreverse results))))
+                        (let (results)
+                          (dolist (line (attest-test-fixture-lines name))
+                            (let ((r (attest-node--parse-line run line)))
+                              (when r (push r results))))
+                          (nreverse results))))
 
 (ert-deftest attest-node-parses-every-test-and-suite ()
   (let ((results (attest-node-test--parse-fixture "demo-events.jsonl")))
@@ -71,10 +71,10 @@
 
 (ert-deftest attest-node-ignores-noise-lines ()
   (attest-test-with-run run
-    (should-not (attest-node--parse-line run ""))
-    (should-not (attest-node--parse-line run "not json"))
-    (should-not (attest-node--parse-line run "{\"type\":\"test:diagnostic\",\"data\":{}}"))
-    (should-not (attest-node--parse-line run "{broken"))))
+                        (should-not (attest-node--parse-line run ""))
+                        (should-not (attest-node--parse-line run "not json"))
+                        (should-not (attest-node--parse-line run "{\"type\":\"test:diagnostic\",\"data\":{}}"))
+                        (should-not (attest-node--parse-line run "{broken"))))
 
 (ert-deftest attest-node-name-pattern-anchors-tests-and-namespaces ()
   (should (equal (attest-node--name-pattern (list :id "/f.ts::math::adds" :type 'test))
@@ -266,10 +266,10 @@ whichever file started a suite last."
   (let* ((alpha (expand-file-name "alpha.test.mjs" attest-node-test--concurrent-dir))
          (beta (expand-file-name "beta.test.mjs" attest-node-test--concurrent-dir))
          (ids (attest-test-with-run run
-                (mapcar (lambda (r) (plist-get r :id))
-                        (delq nil (mapcar (lambda (l) (attest-node--parse-line run l))
-                                          (attest-node-test--replay-reporter
-                                           attest-node--reporter)))))))
+                                    (mapcar (lambda (r) (plist-get r :id))
+                                            (delq nil (mapcar (lambda (l) (attest-node--parse-line run l))
+                                                              (attest-node-test--replay-reporter
+                                                               attest-node--reporter)))))))
     (should (member (attest-make-id alpha "alpha suite" "alpha inner" "alpha deep") ids))
     (should (member (attest-make-id alpha "alpha suite" "alpha shallow") ids))
     (should (member (attest-make-id beta "beta suite" "beta inner" "beta deep") ids))

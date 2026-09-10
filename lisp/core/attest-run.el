@@ -293,8 +293,8 @@ as alists with null and false read as nil."
   (if (string-prefix-p "{" line)
       (condition-case err
           (json-parse-string line :object-type 'alist
-                           :array-type (or array-type 'array)
-                           :null-object nil :false-object nil)
+                             :array-type (or array-type 'array)
+                             :null-object nil :false-object nil)
         (error (attest-report-error run (error-message-string err)) nil))
     (attest-append-output run (concat line "\n"))
     nil))
@@ -342,9 +342,9 @@ cannot stop the run."
         (dolist (result results)
           (attest--record run result)))
     (error (attest-report-error run
-                               (format "%s parser failed: %s"
-                                       (plist-get run :backend)
-                                       (error-message-string err))))))
+                                (format "%s parser failed: %s"
+                                        (plist-get run :backend)
+                                        (error-message-string err))))))
 
 (defun attest--flush-lines (run key)
   "Parse a trailing partial line buffered under KEY in RUN."
@@ -367,40 +367,40 @@ the cache of whatever run replaced it."
 (defun attest--finish (run status)
   "Mark RUN finished with STATUS, notify consumers and report a summary."
   (unless (plist-get run :end-time)
-  (when-let* ((timer (plist-get run :preparation-timer)))
-    (cancel-timer timer)
-    (plist-put run :preparation-timer nil))
-  (attest--flush-lines run :partial-stdout)
-  (attest--flush-lines run :partial-stderr)
+    (when-let* ((timer (plist-get run :preparation-timer)))
+      (cancel-timer timer)
+      (plist-put run :preparation-timer nil))
+    (attest--flush-lines run :partial-stdout)
+    (attest--flush-lines run :partial-stderr)
     (plist-put run :status status)
-  (plist-put run :end-time (float-time))
-  (attest--progress-stop run)
-  (when-let* ((stderr (plist-get run :stderr-process)))
-    (when (process-live-p stderr) (delete-process stderr)))
-  (attest--notify 'attest-run-finished-functions run)
-  (let ((summary (attest-run-summary run)))
-    (message "attest: %d passed, %d failed, %d skipped (%s in %.1fs)"
-             (plist-get summary :passed)
-             (plist-get summary :failed)
-             (+ (plist-get summary :skipped)
-                (plist-get summary :todo))
-             status
-             (- (plist-get run :end-time) (plist-get run :start-time)))
-    (when (or (eq attest-display-output t)
-              (and (eq attest-display-output 'on-failure)
-                   (memq (plist-get summary :outcome) '(failed error))))
-      (when-let* ((buffer (plist-get run :output-buffer)))
-        (display-buffer buffer))))))
+    (plist-put run :end-time (float-time))
+    (attest--progress-stop run)
+    (when-let* ((stderr (plist-get run :stderr-process)))
+      (when (process-live-p stderr) (delete-process stderr)))
+    (attest--notify 'attest-run-finished-functions run)
+    (let ((summary (attest-run-summary run)))
+      (message "attest: %d passed, %d failed, %d skipped (%s in %.1fs)"
+               (plist-get summary :passed)
+               (plist-get summary :failed)
+               (+ (plist-get summary :skipped)
+                  (plist-get summary :todo))
+               status
+               (- (plist-get run :end-time) (plist-get run :start-time)))
+      (when (or (eq attest-display-output t)
+                (and (eq attest-display-output 'on-failure)
+                     (memq (plist-get summary :outcome) '(failed error))))
+        (when-let* ((buffer (plist-get run :output-buffer)))
+          (display-buffer buffer))))))
 
 (defun attest--drain (run)
   "Read whatever RUN\='s stderr pipe still holds.
 One `accept-process-output' can return a partial final batch, so read
 until the pipe has nothing left."
   (let ((deadline (+ (float-time) 1)))
-   (when-let* ((stderr (plist-get run :stderr-process)))
-    (while (and (process-live-p stderr)
-                (< (float-time) deadline)
-                (accept-process-output stderr 0.05))))))
+    (when-let* ((stderr (plist-get run :stderr-process)))
+      (while (and (process-live-p stderr)
+                  (< (float-time) deadline)
+                  (accept-process-output stderr 0.05))))))
 
 (defun attest--exit-status (run process)
   "Classify PROCESS exit using RUN's backend failure-exit contract."
@@ -543,29 +543,29 @@ missing these would silently lose every key set during the run.")
   "Launch PLAN's invocations after RUN has completed preparation."
   (when (and (attest-run-active-p run)
              (not (plist-get run :plan-launched)))
-  (let* ((specs (attest-validate-invocation-plan plan))
-         (spec (car specs))
-         (command (plist-get spec :command))
-         (directory (or (plist-get spec :directory) (plist-get run :root))))
-    (plist-put run :plan-launched t)
-    (plist-put run :phase 'running)
-    (plist-put run :command command)
-    (plist-put run :directory directory)
-    (plist-put run :output-buffer (attest--output-buffer run))
-    (unless (plist-member spec :state)
-      (plist-put spec :state (plist-get run :state)))
-    (plist-put run :pending-invocations specs)
-    (attest--prune-run-scope run)
-    (attest--notify 'attest-run-started-functions run)
-    (attest--next-invocation run))))
+    (let* ((specs (attest-validate-invocation-plan plan))
+           (spec (car specs))
+           (command (plist-get spec :command))
+           (directory (or (plist-get spec :directory) (plist-get run :root))))
+      (plist-put run :plan-launched t)
+      (plist-put run :phase 'running)
+      (plist-put run :command command)
+      (plist-put run :directory directory)
+      (plist-put run :output-buffer (attest--output-buffer run))
+      (unless (plist-member spec :state)
+        (plist-put spec :state (plist-get run :state)))
+      (plist-put run :pending-invocations specs)
+      (attest--prune-run-scope run)
+      (attest--notify 'attest-run-started-functions run)
+      (attest--next-invocation run))))
 
 (defun attest-prepare-command (run command continuation)
   "Run preparation COMMAND for RUN and pass its stdout to CONTINUATION.
 The process is owned by RUN and cancellation suppresses its callback."
   (let* ((default-directory (plist-get run :root))
          (stderr (make-pipe-process :name "attest-prepare-stderr" :noquery t
-                                   :coding 'utf-8 :sentinel #'ignore
-                                   :filter (lambda (_ text) (attest-append-output run text))))
+                                    :coding 'utf-8 :sentinel #'ignore
+                                    :filter (lambda (_ text) (attest-append-output run text))))
          (chunks nil))
     (plist-put run :stderr-process stderr)
     (plist-put
@@ -600,21 +600,21 @@ Stderr gets its own pipe process so the two streams never interleave."
                   :noquery t
                   :coding 'utf-8
                   :filter (attest--make-filter run :partial-stderr
-                                                (eq parse-stream 'stderr))
+                                               (eq parse-stream 'stderr))
                   :sentinel #'ignore)))
     (plist-put run :stderr-process stderr)
     (let ((process (make-process
-                   :name "attest"
-                   :command command
-                   :noquery t
-                   :connection-type 'pipe
-                   :coding 'utf-8
-                   :stderr stderr
-                   :filter (attest--make-filter run :partial-stdout
+                    :name "attest"
+                    :command command
+                    :noquery t
+                    :connection-type 'pipe
+                    :coding 'utf-8
+                    :stderr stderr
+                    :filter (attest--make-filter run :partial-stdout
                                                  (eq parse-stream 'stdout))
-                   :sentinel (attest--sentinel run))))
-    (plist-put run :process process)
-    run)))
+                    :sentinel (attest--sentinel run))))
+      (plist-put run :process process)
+      run)))
 
 (defun attest-run (scope &rest props)
   "Run tests for SCOPE in the current buffer's backend.

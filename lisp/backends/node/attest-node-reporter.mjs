@@ -14,12 +14,20 @@ const failure = (error) => {
   const cause = error?.cause;
   const inner = cause && typeof cause === "object" ? cause : error;
   const message =
-    inner?.message ?? (typeof cause === "string" ? cause : error?.message) ?? "test failed";
+    inner?.message ??
+    (typeof cause === "string" ? cause : error?.message) ??
+    "test failed";
   return { message, stack: inner?.stack ?? "" };
 };
 
 const state = (type, data) =>
-  data.skip ? "skipped" : data.todo ? "todo" : type === "test:fail" ? "failed" : "passed";
+  data.skip
+    ? "skipped"
+    : data.todo
+      ? "todo"
+      : type === "test:fail"
+        ? "failed"
+        : "passed";
 
 export default async function* attestReporter(source) {
   for await (const { type, data } of source) {

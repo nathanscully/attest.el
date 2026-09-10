@@ -88,10 +88,10 @@
                                (overlays-in (point-min) (point-max)))))
      (should (= (length overlays) 9))
      (let ((by-line (mapcar (lambda (o)
-                             (cons (line-number-at-pos (overlay-start o))
-                                   (nth 2 (get-text-property
-                                           0 'display (overlay-get o 'before-string)))))
-                           overlays)))
+                              (cons (line-number-at-pos (overlay-start o))
+                                    (nth 2 (get-text-property
+                                            0 'display (overlay-get o 'before-string)))))
+                            overlays)))
        (should (eq (alist-get 8 by-line) 'attest-status-failed))
        (should (eq (alist-get 5 by-line) 'attest-status-passed))
        (should (eq (alist-get 14 by-line) 'attest-status-skipped))))

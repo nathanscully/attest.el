@@ -121,8 +121,8 @@ rather than only from a test file."
          (selection
           (pcase (plist-get run :scope)
             ('targets (mapcar (lambda (target)
-                               (or (plist-get target :runner-name)
-                                   (attest-pytest--nodeid (plist-get target :id) root)))
+                                (or (plist-get target :runner-name)
+                                    (attest-pytest--nodeid (plist-get target :id) root)))
                               (plist-get run :targets)))
             (_ (mapcar (lambda (f) (file-relative-name f root)) (attest-run-files run))))))
     (list :command (append attest-pytest-command
@@ -181,14 +181,14 @@ Other stderr lines go to the output buffer."
       (attest-pytest--result run event))))
 
 (attest-register-backend 'pytest
-  :test-failure-exit-codes '(1)
-  :predicate #'attest-pytest--buffer-p
-  :project-p #'attest-pytest--project-p
-  :test-file-p #'attest-pytest-test-file-p
-  :root #'attest-pytest-root
-  :query (cons 'python attest-pytest--query)
-  :command #'attest-pytest--command
-  :parse-line #'attest-pytest--parse-line)
+                         :test-failure-exit-codes '(1)
+                         :predicate #'attest-pytest--buffer-p
+                         :project-p #'attest-pytest--project-p
+                         :test-file-p #'attest-pytest-test-file-p
+                         :root #'attest-pytest-root
+                         :query (cons 'python attest-pytest--query)
+                         :command #'attest-pytest--command
+                         :parse-line #'attest-pytest--parse-line)
 
 (provide 'attest-pytest)
 ;;; attest-pytest.el ends here

@@ -342,18 +342,18 @@ not ask for."
              (id-names (if (and ambiguous (gethash name ambiguous))
                            (append (list (concat "@cargo/" target)) names)
                          names)))
-       (append (list :id (apply #'attest-make-id file id-names)
-                    :definition-id (apply #'attest-make-id file names)
-                    :execution-target target
-                    :runner-name name
-                    :type 'test
-                    :name (car (last names))
-                    :status status
-                    :file file
-                    :duration (when-let* ((s (alist-get 'exec_time event))) (* 1000 s)))
-              (when (eq status 'failed)
-                (list :message (or (and stdout (string-trim stdout)) "test failed")
-                      :location (attest-rust--panic-location stdout run file))))))))
+        (append (list :id (apply #'attest-make-id file id-names)
+                      :definition-id (apply #'attest-make-id file names)
+                      :execution-target target
+                      :runner-name name
+                      :type 'test
+                      :name (car (last names))
+                      :status status
+                      :file file
+                      :duration (when-let* ((s (alist-get 'exec_time event))) (* 1000 s)))
+                (when (eq status 'failed)
+                  (list :message (or (and stdout (string-trim stdout)) "test failed")
+                        :location (attest-rust--panic-location stdout run file))))))))
 
 (defun attest-rust--doctest-p (name)
   "Return non-nil when libtest NAME denotes a doc test.
@@ -370,15 +370,15 @@ Other stdout lines go to the output buffer."
       (attest-rust--result run event))))
 
 (attest-register-backend 'rust
-  :plan #'attest-rust--plan
-  :test-failure-exit-codes '(101)
-  :predicate #'attest-rust--buffer-p
-  :project-p #'attest-rust--project-p
-  :test-file-p #'attest-rust-test-file-p
-  :root #'attest-rust-root
-  :query (cons 'rust attest-rust--query)
-  :command #'attest-rust--command
-  :parse-line #'attest-rust--parse-line)
+                         :plan #'attest-rust--plan
+                         :test-failure-exit-codes '(101)
+                         :predicate #'attest-rust--buffer-p
+                         :project-p #'attest-rust--project-p
+                         :test-file-p #'attest-rust-test-file-p
+                         :root #'attest-rust-root
+                         :query (cons 'rust attest-rust--query)
+                         :command #'attest-rust--command
+                         :parse-line #'attest-rust--parse-line)
 
 (provide 'attest-rust)
 ;;; attest-rust.el ends here
