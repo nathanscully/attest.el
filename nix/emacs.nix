@@ -62,8 +62,6 @@ rec {
     "test"
   ];
 
-  version = "0.1.0";
-
   inherit (pkgs.lib) concatStringsSep;
 
   load = concatStringsSep " " (
@@ -98,13 +96,19 @@ rec {
         -l test/attest-stress-test.el -f ert-run-tests-batch-and-exit
     '';
 
+    # scripts/package.el reads the version from lisp/attest.el's own header
+    # and prints the directory it staged, so the version lives in one place.
     package = ''
-      emacs -Q --batch -l scripts/package.el ${sourceArgs} ${assetArgs}
-      tar -cf build/attest-${version}.tar -C build attest-${version}
+      set -e
+      name=$(emacs -Q --batch -l scripts/package.el ${sourceArgs} ${assetArgs} | tail -1)
+      tar -cf "build/$name.tar" -C build "$name"
+      echo "build/$name.tar"
     '';
 
     package-test = ''
-      emacs -Q --batch -l test/package-smoke.el build/attest-${version}.tar
+      set -e
+      tar=$(package | tail -1)
+      emacs -Q --batch -l test/package-smoke.el "$tar"
     '';
 
     clean = ''

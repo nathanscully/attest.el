@@ -1,14 +1,11 @@
 name: ci
-
 on:
   push:
     branches: [main]
   pull_request:
   workflow_dispatch:
-
 permissions:
   contents: read
-
 jobs:
   check:
     strategy:
@@ -24,8 +21,8 @@ jobs:
         with:
           name: ${{ vars.CACHIX_CACHE }}
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+      - run: nix develop -c fmt --ci
       - run: nix flake check -L
-
   stress:
     runs-on: ubuntu-latest
     steps:

@@ -28,9 +28,10 @@ Read in this order before changing anything:
 | `stress/` | one real project per runner (`node`, `vitest`, `cargo`, `pytest`); `test/attest-stress-test.el` runs them via the `stress` command |
 | `flake.nix` | flake-parts entry point; dev shell, commands and `nix flake check` |
 | `assets/live-tlox.png` | screenshot of a live run in the daemon |
-| `nix/` | `emacs.nix` (toolchain, ordered source list) and `devshell.nix` (the commands) |
+| `nix/` | `emacs.nix` (toolchain, ordered source list), `devshell.nix` (the commands), `formatter.nix` (treefmt) |
 | `scripts/compile.el` | byte-compiles as a lint, discarding the bytecode |
-| `scripts/package.el` | stages `build/attest-0.1.0/` for the `package` command |
+| `scripts/format.el` | reindents Elisp, the formatter treefmt lacks |
+| `scripts/package.el` | stages the package, naming it from `attest.el`'s version |
 | `docs/` | domain vocabulary (`CONTEXT.md`) and, under `reviews/`, the reviews and 1.0 roadmap |
 | `scratch/` | gitignored working notes (`PLAN.md`) |
 
@@ -44,7 +45,7 @@ also reachable without entering the shell.
 nix develop -c check         # compile (warnings are errors), checkdoc, ert
 nix develop -c ert           # the ert suite only
 nix develop -c stress        # live runs against stress/; not part of check
-nix develop -c package       # stage build/attest-0.1.0.tar with autoloads
+nix develop -c package       # stage the installable tar with autoloads
 nix develop -c package-test  # install that tar into a clean Emacs
 nix develop -c clean         # drop build/
 nix flake check              # the same gate on a clean Emacs in the sandbox
@@ -63,6 +64,18 @@ and writes the bytecode to a temporary directory it then deletes. The
 diagnostics are the point, and an `.elc` left in the tree would only wait
 to shadow an edited source and report a false pass. Bytecode belongs in
 a user's install, where `package-install-file` produces it.
+
+The version lives in one place, `lisp/attest.el`'s `;; Version:` header.
+`scripts/package.el` reads it, names the staged directory after it and
+prints that name for the shell to archive, so no Nix file or command
+spells a version out.
+
+`fmt` runs treefmt (`nix/formatter.nix`): nixpkgs-fmt, prettier for JS and
+JSON, taplo for TOML, yamlfmt, and `scripts/format.el` for Elisp, which
+applies the indentation Emacs itself would with tabs disabled. Markdown,
+`test/fixtures/` and `stress/` are excluded: the prose is hand-wrapped at
+72 columns, and the fixtures are test data whose exact lines the suite
+asserts on.
 
 The stress suite spawns every runner against the projects under
 `stress/` and checks what the fixtures cannot: id parity between

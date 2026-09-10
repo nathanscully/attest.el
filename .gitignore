@@ -9,3 +9,4 @@ result
 logs/
 attest-autoloads.el
 build/
+.claude/settings.local.json
