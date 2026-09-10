@@ -78,9 +78,7 @@ rec {
   # the sandboxed check cannot drift apart.
   scripts = {
     compile = ''
-      emacs -Q --batch ${load} \
-        --eval '(setq byte-compile-error-on-warn t)' \
-        -f batch-byte-compile ${sourceArgs}
+      emacs -Q --batch ${load} -l scripts/compile.el ${sourceArgs}
     '';
 
     checkdoc = ''
@@ -110,7 +108,6 @@ rec {
     '';
 
     clean = ''
-      find lisp test -name '*.elc' -delete
       rm -rf build
     '';
   };

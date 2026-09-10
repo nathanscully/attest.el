@@ -29,6 +29,7 @@ Read in this order before changing anything:
 | `flake.nix` | flake-parts entry point; dev shell, commands and `nix flake check` |
 | `assets/live-tlox.png` | screenshot of a live run in the daemon |
 | `nix/` | `emacs.nix` (toolchain, ordered source list) and `devshell.nix` (the commands) |
+| `scripts/compile.el` | byte-compiles as a lint, discarding the bytecode |
 | `scripts/package.el` | stages `build/attest-0.1.0/` for the `package` command |
 | `docs/` | domain vocabulary (`CONTEXT.md`) and, under `reviews/`, the reviews and 1.0 roadmap |
 | `scratch/` | gitignored working notes (`PLAN.md`) |
@@ -45,7 +46,7 @@ nix develop -c ert           # the ert suite only
 nix develop -c stress        # live runs against stress/; not part of check
 nix develop -c package       # stage build/attest-0.1.0.tar with autoloads
 nix develop -c package-test  # install that tar into a clean Emacs
-nix develop -c clean         # drop bytecode and build/
+nix develop -c clean         # drop build/
 nix flake check              # the same gate on a clean Emacs in the sandbox
 ```
 
@@ -55,6 +56,13 @@ command compiles, so the shell and the sandboxed check cannot drift.
 load-bearing: a file must compile after everything it requires. The ert
 command is named `ert`, not `test`, because a shell builtin of that name
 would shadow it and silently succeed.
+
+There is no build. Emacs loads attest from source, so `compile` is a
+lint: `scripts/compile.el` runs the byte-compiler with warnings as errors
+and writes the bytecode to a temporary directory it then deletes. The
+diagnostics are the point, and an `.elc` left in the tree would only wait
+to shadow an edited source and report a false pass. Bytecode belongs in
+a user's install, where `package-install-file` produces it.
 
 The stress suite spawns every runner against the projects under
 `stress/` and checks what the fixtures cannot: id parity between
