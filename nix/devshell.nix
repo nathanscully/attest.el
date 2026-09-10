@@ -1,4 +1,4 @@
-{ pkgs, emacs }:
+{ pkgs, emacs, treefmtWrapper }:
 
 {
   default = {
@@ -12,8 +12,8 @@
           → check        compile + checkdoc + ert (the full gate)
           → ert          the ert suite only
           → stress       live runs against stress/
-          → package      stage build/attest-${emacs.version}.tar
-          → fmt          format the nix files
+          → package      stage the installable tar
+          → fmt          format everything
           → menu         full command list
       '';
       startup.direnv.text = pkgs.lib.mkForce "";
@@ -72,23 +72,19 @@
         category = "package";
         name = "package-test";
         help = "Install the staged tar into a clean Emacs and load it";
-        command = ''
-          set -e
-          package
-          ${emacs.scripts.package-test}
-        '';
+        command = emacs.scripts.package-test;
       }
       {
         category = "package";
         name = "clean";
-        help = "Remove byte-compiled files and the staged package";
+        help = "Remove the staged package";
         command = emacs.scripts.clean;
       }
       {
         category = "dev";
         name = "fmt";
-        help = "Format the nix files";
-        command = "${pkgs.nixpkgs-fmt}/bin/nixpkgs-fmt .";
+        help = "Format every source file treefmt owns";
+        command = "${treefmtWrapper}/bin/treefmt \"$@\"";
       }
     ];
   };
