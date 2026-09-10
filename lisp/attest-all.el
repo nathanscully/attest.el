@@ -27,16 +27,41 @@
 ;;; Commentary:
 
 ;; One entry point that loads the core, every bundled backend and every
-;; consumer.  Equivalent to requiring the eight files by hand.
+;; consumer.  Putting this file's own directory on `load-path' is enough:
 ;;
+;;   (add-to-list 'load-path "/path/to/attest/lisp")
 ;;   (require 'attest-all)
 ;;   (global-attest-flymake-mode 1)
 ;;   (global-attest-status-mode 1)
+;;
+;; A source checkout keeps the core, the backends and the consumers in
+;; subdirectories, so this file adds its own before requiring anything.  An
+;; installed package is flat and already on `load-path', where that is a
+;; no-op.  Either way a consumer never hand-writes the directory list, which
+;; would otherwise break whenever a backend is added.
 ;;
 ;; Backends register on load and are chosen per buffer, so loading one
 ;; whose runner is absent costs nothing but the load.
 
 ;;; Code:
+
+(defconst attest-all-source-directories
+  '("core" "backends/shared" "backends/node" "backends/vitest"
+    "backends/cargo" "backends/pytest" "consumers")
+  "Subdirectories holding attest\='s sources in a source checkout.
+Empty in an installed package, whose files sit beside this one.")
+
+(defun attest-all--add-source-directories ()
+  "Put this file\='s sibling source directories on `load-path'.
+Does nothing for the directories an installed package does not have."
+  (when-let* ((file (or load-file-name buffer-file-name))
+              (root (file-name-directory file)))
+    (dolist (directory attest-all-source-directories)
+      (let ((path (expand-file-name directory root)))
+        (when (file-directory-p path)
+          (add-to-list 'load-path path))))))
+
+(attest-all--add-source-directories)
 
 ;;;###autoload
 (defun attest-all-load ()
