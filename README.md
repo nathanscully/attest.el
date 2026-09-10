@@ -23,11 +23,16 @@ you run a test in it. Install the grammars before first use; see
 (keymap-global-set "C-c t" attest-prefix-map)
 ```
 
-`attest-all` loads the core, the four backends and the three consumers.
-Require the files individually to load fewer: `attest` plus at least one
-backend is the minimum, and each consumer is optional. A backend whose
-runner is not installed costs nothing but the load, since backends are
-chosen per buffer.
+One `load-path` entry is enough. `attest-all` loads the core, the four
+backends and the three consumers, and a source checkout keeps those in
+subdirectories that it adds itself, so the list never has to be written
+out by hand. An installed package is flat and that step does nothing.
+
+A backend whose runner is not installed costs nothing but the load, since
+backends are chosen per buffer. To load fewer from a source checkout, add
+the subdirectory holding each file you want — `lisp/core`,
+`lisp/backends/NAME`, `lisp/consumers` — and require it; `attest` plus one
+backend is the minimum, and every consumer is optional.
 
 | key | command |
 |---|---|

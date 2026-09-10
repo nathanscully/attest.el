@@ -148,13 +148,14 @@ use `env -u NODE_OPTIONS node ...` when testing by hand.
 
 ## Verifying in a live Emacs
 
-The owner runs Emacs as a daemon; `emacsclient --eval` reaches it. Load
-the files from this directory, disable side effects, run, inspect:
+The owner runs Emacs as a daemon; `emacsclient --eval` reaches it. Put
+`lisp/` on `load-path` and require `attest-all`, which adds its own
+subdirectories, then disable side effects:
 
 ```elisp
 (progn
-  (dolist (f '("attest" "attest-node" "attest-flymake" "attest-status" "attest-list"))
-    (load (expand-file-name (concat f ".el") "~/projects/attest/") nil t))
+  (add-to-list 'load-path (expand-file-name "~/projects/attest/lisp"))
+  (require 'attest-all)
   (setq attest-save-before-run nil attest-display-output nil))
 ```
 
@@ -162,6 +163,12 @@ Then in a test buffer `(attest-run-at-point)` and, after it finishes,
 `(attest-run-results (attest-last-run))`, `(flymake-diagnostics)` and
 the overlays with property `attest-status`. Do not call `pop-to-buffer`
 inside the same form you inspect from; it changes the current buffer.
+
+A long-lived daemon holds whatever it loaded first, so a symbol that
+appears nowhere in the sources — `attest-status-mode--set-explicitly`, say,
+which `define-globalized-minor-mode` used to generate — means the daemon
+is running code from an older load, not that the tree is broken. Restart
+it before believing a void-variable or void-function report.
 
 ## Known limits
 
