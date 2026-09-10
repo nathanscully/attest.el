@@ -31,6 +31,7 @@
 
 ;;; Code:
 
+(require 'attest-loadpath)
 (require 'attest)
 
 (defgroup attest-pytest nil

@@ -24,6 +24,7 @@ rec {
   # Byte-compile order is load-bearing: a file must compile after everything
   # it requires, or warnings-as-errors fires on a forward reference.
   core = [
+    "lisp/attest-loadpath.el"
     "lisp/core/attest-model.el"
     "lisp/core/attest-backend.el"
     "lisp/core/attest-discovery.el"

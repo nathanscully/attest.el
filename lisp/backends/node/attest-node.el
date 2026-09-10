@@ -34,6 +34,7 @@
 
 ;;; Code:
 
+(require 'attest-loadpath)
 (require 'attest)
 (require 'attest-javascript)
 
