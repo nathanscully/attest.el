@@ -71,10 +71,12 @@ prints that name for the shell to archive, so no Nix file or command
 spells a version out.
 
 `fmt` runs treefmt (`nix/formatter.nix`): nixpkgs-fmt, prettier for JS and
-JSON, taplo for TOML, yamlfmt, and `scripts/format.el` for Elisp, which
-applies the indentation Emacs itself would with tabs disabled. Markdown,
-`test/fixtures/` and `stress/` are excluded: the prose is hand-wrapped at
-72 columns, and the fixtures are test data whose exact lines the suite
+JSON, taplo for TOML, yamlfmt, mdformat for Markdown, and
+`scripts/format.el` for Elisp, which applies the indentation Emacs itself
+would with tabs disabled. Markdown goes through mdformat rather than
+prettier because it leaves tables and paragraph wrapping alone; `--number`
+keeps ordered lists numbered in the source. `test/fixtures/` and
+`stress/` are excluded, being test data whose exact lines the suite
 asserts on.
 
 The stress suite spawns every runner against the projects under

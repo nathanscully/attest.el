@@ -56,14 +56,18 @@ which the backend uses to rerun exactly that test.
 
 Position (from discovery):
 
-    (:id "FILE::ns::name" :type test|namespace :name :file :line :column
-     :beg :end :parent-id)
+```
+(:id "FILE::ns::name" :type test|namespace :name :file :line :column
+ :beg :end :parent-id)
+```
 
 Result (from the runner):
 
-    (:id "CASE-ID" :definition-id "DEFINITION-ID"
-     :type test|namespace :name :status
-     :file :line :column :duration :message :stack :location (LINE . COL))
+```
+(:id "CASE-ID" :definition-id "DEFINITION-ID"
+ :type test|namespace :name :status
+ :file :line :column :duration :message :stack :location (LINE . COL))
+```
 
 `:id` is the runtime-case identity. `:definition-id` points to the static
 source definition when the runner provides a parameterized or execution-
@@ -77,9 +81,11 @@ when the runner gives one.
 
 Run:
 
-    (:request ATTEST-REQUEST :backend :scope :file :root :targets :files :index
-     :command :directory :process :status :result-ids :results :state
-     :start-time :end-time :output-buffer)
+```
+(:request ATTEST-REQUEST :backend :scope :file :root :targets :files :index
+ :command :directory :process :status :result-ids :results :state
+ :start-time :end-time :output-buffer)
+```
 
 `attest-request` captures the backend, scope, origin and resolved selection
 before execution mutates the run. `attest-invocation` owns one process,
@@ -174,15 +180,17 @@ shallower entries.
 
 ## Data flow
 
-    attest-run
-      -> progress: start message, mode-line timer ticking every second
-      -> backend :command (blocking: rust indexes the crate here)
-      -> prune the cache against discovery
-      -> make-process, stdout -> *attest* (ansi-color, compilation-minor-mode)
-                       stderr -> line splitter -> backend :parse-line
-      -> attest--record: puthash id result; run attest-result-functions
-      -> sentinel: clear progress, attest-run-finished-functions,
-         summary message
+```
+attest-run
+  -> progress: start message, mode-line timer ticking every second
+  -> backend :command (blocking: rust indexes the crate here)
+  -> prune the cache against discovery
+  -> make-process, stdout -> *attest* (ansi-color, compilation-minor-mode)
+                   stderr -> line splitter -> backend :parse-line
+  -> attest--record: puthash id result; run attest-result-functions
+  -> sentinel: clear progress, attest-run-finished-functions,
+     summary message
+```
 
 Consumers subscribe to four hooks and read the shared cache
 `attest--results` (id -> latest result). Three report a run;
@@ -230,9 +238,11 @@ prints one JSON event per line. `JSON.stringify` drops an
 Error's `message` and `stack`, so the reporter copies those fields
 explicitly. Both reporters run in one process:
 
-    node --test --test-reporter=spec --test-reporter-destination=stdout \
-                --test-reporter=attest-node-reporter.mjs --test-reporter-destination=stderr \
-                [--test-name-pattern=...] files...
+```
+node --test --test-reporter=spec --test-reporter-destination=stdout \
+            --test-reporter=attest-node-reporter.mjs --test-reporter-destination=stderr \
+            [--test-name-pattern=...] files...
+```
 
 ## What the second, third and fourth backends changed in core
 
@@ -243,13 +253,18 @@ explicitly. Both reporters run in one process:
 
 - Always create the stderr pipe, so a backend parsing stdout (cargo)
   still gets its stderr into the output buffer.
+
 - `attest-append-output` became public: libtest embeds the failure
   text in the JSON event, and vitest and node print errors as plain
   lines on the parse stream.
+
 - Any normal exit counts as `finished`; cargo exits 101 on failure.
+
 - `attest--parse-line` catches backend errors and drops the line.
+
 - A failed spawn finishes the run with `error` instead of leaving it
   `running`.
+
 - `attest-results-for-file` tolerates results without a file.
 
 None of these touched the backend contract or the consumers.
