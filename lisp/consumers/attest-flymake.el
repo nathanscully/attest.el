@@ -35,6 +35,7 @@
 
 ;;; Code:
 
+(require 'attest-loadpath)
 (require 'flymake)
 (require 'attest)
 

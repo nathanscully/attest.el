@@ -23,16 +23,33 @@ you run a test in it. Install the grammars before first use; see
 (keymap-global-set "C-c t" attest-prefix-map)
 ```
 
+Or with `use-package`, from a source checkout:
+
+```elisp
+(use-package attest-all
+  :load-path "~/projects/attest/lisp"
+  :bind-keymap ("C-c t" . attest-prefix-map)
+  :config
+  (global-attest-flymake-mode 1)
+  (global-attest-status-mode 1))
+```
+
 One `load-path` entry is enough. `attest-all` loads the core, the four
-backends and the three consumers, and a source checkout keeps those in
-subdirectories that it adds itself, so the list never has to be written
-out by hand. An installed package is flat and that step does nothing.
+backends and the three consumers; a source checkout keeps those in
+subdirectories that attest puts on `load-path` itself, so the list is
+never written out by hand. An installed package is flat and that step
+does nothing.
+
+Name `attest-all` or `attest` as the feature, not a backend or a consumer.
+Those live in subdirectories, and from a source checkout Emacs has to find
+a file before the file can add its own directory. Requiring either of the
+two above resolves the rest, so a later `(require 'attest-node)` needs
+nothing more.
 
 A backend whose runner is not installed costs nothing but the load, since
-backends are chosen per buffer. To load fewer from a source checkout, add
-the subdirectory holding each file you want — `lisp/core`,
-`lisp/backends/NAME`, `lisp/consumers` — and require it; `attest` plus one
-backend is the minimum, and every consumer is optional.
+backends are chosen per buffer. Require `attest` instead of `attest-all`
+for the core alone, then add the backends and consumers you want; one
+backend is the minimum and every consumer is optional.
 
 | key | command |
 |---|---|

@@ -30,6 +30,7 @@
 
 ;;; Code:
 
+(require 'attest-loadpath)
 (require 'attest-run)
 ;;;; Commands
 

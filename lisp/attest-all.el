@@ -45,23 +45,7 @@
 
 ;;; Code:
 
-(defconst attest-all-source-directories
-  '("core" "backends/shared" "backends/node" "backends/vitest"
-    "backends/cargo" "backends/pytest" "consumers")
-  "Subdirectories holding attest\='s sources in a source checkout.
-Empty in an installed package, whose files sit beside this one.")
-
-(defun attest-all--add-source-directories ()
-  "Put this file\='s sibling source directories on `load-path'.
-Does nothing for the directories an installed package does not have."
-  (when-let* ((file (or load-file-name buffer-file-name))
-              (root (file-name-directory file)))
-    (dolist (directory attest-all-source-directories)
-      (let ((path (expand-file-name directory root)))
-        (when (file-directory-p path)
-          (add-to-list 'load-path path))))))
-
-(attest-all--add-source-directories)
+(require 'attest-loadpath)
 
 ;;;###autoload
 (defun attest-all-load ()

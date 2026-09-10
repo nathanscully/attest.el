@@ -125,7 +125,7 @@ must accept both spellings."
       :parse-line #'ignore)
      :type 'error)))
 
-(ert-deftest attest-all-source-directories-cover-every-source ()
+(ert-deftest attest-source-directories-cover-every-source ()
   "Every source directory must be one `attest-all\=' puts on `load-path\='.
 The README tells a consumer to add `lisp/\=' and require `attest-all\=',
 so a backend added in a new subdirectory has to be listed here or that
@@ -137,9 +137,22 @@ recipe silently stops working."
       (let ((directory (directory-file-name
                         (file-relative-name (file-name-directory file) root))))
         (unless (or (equal directory ".")
-                    (member directory attest-all-source-directories))
+                    (member directory attest-source-directories))
           (push directory missing))))
     (should-not (delete-dups missing))))
+
+(ert-deftest attest-lisp-features-load-from-one-load-path-entry ()
+  "Each feature in `lisp/\=' must load with only that directory on `load-path\='.
+`(use-package attest ...)\=' requires `attest\=' first, which pulled
+`attest-run\=' from `core/\=' before anything had added it."
+  (let* ((root (file-name-directory (locate-library "attest-loadpath")))
+         (emacs (expand-file-name invocation-name invocation-directory)))
+    (dolist (feature '("attest" "attest-all"))
+      (let ((status (call-process
+                     emacs nil nil nil "-Q" "--batch"
+                     "--eval" (format "(add-to-list 'load-path %S)" root)
+                     "--eval" (format "(require '%s)" feature))))
+        (should (equal (cons feature status) (cons feature 0)))))))
 
 (provide 'attest-contract-test)
 ;;; attest-contract-test.el ends here

@@ -36,6 +36,7 @@
 
 ;;; Code:
 
+(require 'attest-loadpath)
 (require 'attest)
 
 (defgroup attest-rust nil

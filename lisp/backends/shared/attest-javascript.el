@@ -27,6 +27,7 @@
 
 ;;; Code:
 
+(require 'attest-loadpath)
 (require 'attest)
 
 (defgroup attest-node nil
