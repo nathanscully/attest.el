@@ -11,7 +11,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-latest, macos-latest, efy-x64-check]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v5
@@ -24,7 +24,11 @@ jobs:
       - run: nix develop -c fmt --ci
       - run: nix flake check -L
   stress:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, efy-x64-stress]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v5
       - uses: cachix/install-nix-action@v31
